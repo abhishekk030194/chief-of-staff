@@ -396,22 +396,41 @@ def sync_shopping_to_notion(items: list, added_by: str):
 
 # ── Notion Reports DB ────────────────────────────────────────────────────────
 
+def _notion_request(url, payload, method="POST"):
+    """Helper to make a Notion API request and return parsed JSON."""
+    body = json.dumps(payload).encode() if payload and method != "GET" else None
+    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": "2022-06-28"}
+    if body:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read())
+
 def get_reports_db_id():
-    """Return the Notion Reports DB id, creating the database if needed."""
+    """Return the Notion Reports DB id, creating a parent page + database if needed."""
     if not notion:
         return None
-    # Check cached id
+    # Return cached id if already created
     if os.path.exists(REPORTS_DB_FILE):
         with open(REPORTS_DB_FILE) as f:
             db_id = f.read().strip()
         if db_id:
             return db_id
-    # Auto-create the database under the workspace root
     try:
-        payload = json.dumps({
-            "parent": {"type": "workspace", "workspace": True},
-            "icon": {"type": "emoji", "emoji": "📊"},
-            "title": [{"type": "text", "text": {"content": "Mira Daily Reports"}}],
+        # Find the parent page of the Tasks DB and create Reports DB alongside it
+        tasks_db_meta = _notion_request(
+            f"https://api.notion.com/v1/databases/{NOTION_TASKS_DB}",
+            {}, method="GET"
+        ) if NOTION_TASKS_DB else {}
+        parent_page_id = tasks_db_meta.get("parent", {}).get("page_id")
+        if not parent_page_id:
+            logging.error("Could not find parent page for Reports DB")
+            return None
+
+        db = _notion_request("https://api.notion.com/v1/databases", {
+            "parent": {"type": "page_id", "page_id": parent_page_id},
+            "icon":   {"type": "emoji", "emoji": "📈"},
+            "title":  [{"type": "text", "text": {"content": "Mira Daily Reports"}}],
             "properties": {
                 "Date":            {"title": {}},
                 "Chargeable Msgs": {"number": {"format": "number"}},
@@ -428,19 +447,7 @@ def get_reports_db_id():
                 "Errors":          {"number": {"format": "number"}},
                 "Status":          {"select": {}},
             }
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.notion.com/v1/databases",
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {NOTION_TOKEN}",
-                "Content-Type": "application/json",
-                "Notion-Version": "2022-06-28",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req) as resp:
-            db = json.loads(resp.read())
+        })
         db_id = db["id"]
         with open(REPORTS_DB_FILE, "w") as f:
             f.write(db_id)
@@ -481,54 +488,25 @@ def notion_upsert_report(s: dict, today: str):
 
     try:
         # Check if a page for today already exists
-        query_payload = json.dumps({
-            "filter": {"property": "Date", "title": {"equals": today}}
-        }).encode()
-        req = urllib.request.Request(
+        results = _notion_request(
             f"https://api.notion.com/v1/databases/{db_id}/query",
-            data=query_payload,
-            headers={
-                "Authorization": f"Bearer {NOTION_TOKEN}",
-                "Content-Type": "application/json",
-                "Notion-Version": "2022-06-28",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req) as resp:
-            results = json.loads(resp.read()).get("results", [])
+            {"filter": {"property": "Date", "title": {"equals": today}}}
+        ).get("results", [])
 
         if results:
             # Update existing page
             page_id = results[0]["id"]
-            patch_payload = json.dumps({"properties": props}).encode()
-            req2 = urllib.request.Request(
+            _notion_request(
                 f"https://api.notion.com/v1/pages/{page_id}",
-                data=patch_payload,
-                headers={
-                    "Authorization": f"Bearer {NOTION_TOKEN}",
-                    "Content-Type": "application/json",
-                    "Notion-Version": "2022-06-28",
-                },
+                {"properties": props},
                 method="PATCH"
             )
-            urllib.request.urlopen(req2)
         else:
             # Create new page
-            create_payload = json.dumps({
-                "parent": {"database_id": db_id},
-                "properties": props
-            }).encode()
-            req3 = urllib.request.Request(
+            _notion_request(
                 "https://api.notion.com/v1/pages",
-                data=create_payload,
-                headers={
-                    "Authorization": f"Bearer {NOTION_TOKEN}",
-                    "Content-Type": "application/json",
-                    "Notion-Version": "2022-06-28",
-                },
-                method="POST"
+                {"parent": {"database_id": db_id}, "properties": props}
             )
-            urllib.request.urlopen(req3)
         logging.info(f"Notion report upserted for {today}")
     except Exception as e:
         logging.error(f"Notion report upsert error: {e}")
