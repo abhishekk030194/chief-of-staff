@@ -37,23 +37,26 @@ notion = NotionClient(auth=NOTION_TOKEN) if NOTION_TOKEN else None
 # Only these Telegram user IDs can use Mira. Add yours and your wife's.
 ALLOWED_USERS_RAW = os.getenv("ALLOWED_USERS", "")
 ALLOWED_USERS = set(int(uid.strip()) for uid in ALLOWED_USERS_RAW.split(",") if uid.strip().isdigit())
+# First user in the list is the owner who receives security alerts
+OWNER_ID = min(ALLOWED_USERS) if ALLOWED_USERS else None
 
 def is_allowed(update) -> bool:
     """Return True if the sender is on the allowlist (or allowlist is empty)."""
     if not ALLOWED_USERS:
         return True  # not configured yet — open access
-    allowed = update.effective_user.id in ALLOWED_USERS
-    if not allowed:
-        uid  = update.effective_user.id
-        name = update.effective_user.first_name or "Unknown"
-        logging.warning(f"[SECURITY] Unauthorised access attempt — user={name}({uid})")
-        # Fire-and-forget async log (best effort)
-        try:
-            log_security_event("Unauthorised Access", uid, name,
-                               f"User tried to access Mira but is not on the allowlist.")
-        except Exception:
-            pass
-    return allowed
+    return update.effective_user.id in ALLOWED_USERS
+
+async def block_unauthorised(update, context):
+    """Call this instead of is_allowed() to block AND alert in async handlers."""
+    if is_allowed(update):
+        return False  # not blocked
+    uid  = update.effective_user.id
+    name = update.effective_user.first_name or "Unknown"
+    details = f"Tried to use Mira but is not on the allowlist."
+    log_security_event("Unauthorised Access", uid, name, details)
+    await send_security_alert(context.bot, "Unauthorised Access", uid, name, details)
+    await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+    return True  # was blocked
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -183,6 +186,29 @@ def log_security_event(event_type: str, user_id: int, user_name: str, details: s
         logging.warning(f"[SECURITY] {event_type} | user={user_name}({user_id}) | {details}")
     except Exception as e:
         logging.error(f"Security log error: {e}")
+
+async def send_security_alert(bot, event_type: str, user_id: int, user_name: str, details: str):
+    """Send an instant Telegram alert to the owner for any security event."""
+    if not OWNER_ID:
+        return
+    timestamp = datetime.now(IST).strftime("%d %b %Y, %I:%M %p IST")
+    icons = {
+        "Unauthorised Access": "🚨",
+        "Injection Attempt":   "⚠️",
+        "Secret Leak Blocked": "🔒",
+        "Boot Check":          "✅",
+    }
+    icon = icons.get(event_type, "🔐")
+    msg = (
+        f"{icon} *Security Alert — {event_type}*\n\n"
+        f"👤 User: `{user_name}` (ID: `{user_id}`)\n"
+        f"🕐 Time: {timestamp}\n"
+        f"📋 Details: {details}"
+    )
+    try:
+        await bot.send_message(chat_id=OWNER_ID, text=msg, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Security alert send error: {e}")
 
 def run_boot_health_check():
     """Check all integrations on startup and log failures."""
@@ -807,15 +833,11 @@ Group chat rules:
 # ── Command handlers ──────────────────────────────────────────────────────────
 
 async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
     await send_daily_digest(context)
 
 async def notion_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
     await update.message.reply_text("🔄 Syncing with Notion...")
     try:
         # Sync tasks
@@ -847,9 +869,7 @@ async def notion_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Notion sync failed: {str(e)}")
 
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
     if not context.args:
         await update.message.reply_text("Usage: /find <filename or keywords>\nExample: /find invoice\nExample: /find pan card pdf")
         return
@@ -880,9 +900,7 @@ async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"👤 *{name}*, your Telegram user ID is:\n`{uid}`\n\nShare this with Abhishek to get added to Mira's allowlist.", parse_mode="Markdown")
 
 async def costreport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
 
     import calendar as cal_mod
     today     = _today()
@@ -959,9 +977,7 @@ async def costreport_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     notion_upsert_cost(s, today, avg_per_day, projected_claude, now_ist.strftime("%B %Y"))
 
 async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
 
     today = _today()
     s = get_today_stats()
@@ -992,9 +1008,7 @@ async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     notion_upsert_eval(s, today)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
     save_chat_id(update.effective_chat.id)
     await update.message.reply_text(
         "👋 Hi! I'm Mira, your personal family assistant.\n\n"
@@ -1152,9 +1166,7 @@ def get_whisper_model():
     return whisper_model
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
     await update.message.reply_text("🎙️ Got your voice message, transcribing...")
     try:
         voice = update.message.voice or update.message.audio
@@ -1187,9 +1199,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Main message handler ──────────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update):
-        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
-        return
+    if await block_unauthorised(update, context): return
     chat_type = update.message.chat.type
     user_message = update.message.text
     bot_username = context.bot.username
@@ -1220,10 +1230,9 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     matched = check_prompt_injection(user_message)
     if matched:
         increment_stat("errors")
-        log_security_event(
-            "Injection Attempt", user_id, user_name,
-            f"Blocked pattern: '{matched}' | Message: {user_message[:300]}"
-        )
+        details = f"Blocked pattern: '{matched}' | Message: {user_message[:300]}"
+        log_security_event("Injection Attempt", user_id, user_name, details)
+        await send_security_alert(context.bot, "Injection Attempt", user_id, user_name, details)
         await update.message.reply_text(
             "⛔ That message looks like it's trying to manipulate me. I've logged this event.",
             parse_mode="Markdown"
@@ -1275,10 +1284,9 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     # ── Security layer 2: Secret leak scanner ──
     reply_clean = scan_for_secrets(reply)
     if reply_clean != reply:
-        log_security_event(
-            "Secret Leak Blocked", user_id, user_name,
-            "Claude's reply contained a secret-looking string — redacted before sending."
-        )
+        details = "Claude's reply contained a secret-looking string — redacted before sending."
+        log_security_event("Secret Leak Blocked", user_id, user_name, details)
+        await send_security_alert(context.bot, "Secret Leak Blocked", user_id, user_name, details)
         reply = reply_clean
 
     logging.info(f"Claude reply: {reply[:200]}")
