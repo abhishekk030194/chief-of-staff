@@ -1,0 +1,17 @@
+# Secrets & credentials - never upload these
+.env
+credentials.json
+token.json
+
+# Bot data files
+tasks.json
+shopping.json
+conversation.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
