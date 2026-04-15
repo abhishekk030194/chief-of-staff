@@ -42,7 +42,18 @@ def is_allowed(update) -> bool:
     """Return True if the sender is on the allowlist (or allowlist is empty)."""
     if not ALLOWED_USERS:
         return True  # not configured yet — open access
-    return update.effective_user.id in ALLOWED_USERS
+    allowed = update.effective_user.id in ALLOWED_USERS
+    if not allowed:
+        uid  = update.effective_user.id
+        name = update.effective_user.first_name or "Unknown"
+        logging.warning(f"[SECURITY] Unauthorised access attempt — user={name}({uid})")
+        # Fire-and-forget async log (best effort)
+        try:
+            log_security_event("Unauthorised Access", uid, name,
+                               f"User tried to access Mira but is not on the allowlist.")
+        except Exception:
+            pass
+    return allowed
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -97,6 +108,126 @@ def increment_stat(key: str, amount: int = 1):
         stats = load_stats()
     stats[today][key] = stats[today].get(key, 0) + amount
     save_stats(stats)
+
+# ── Security ─────────────────────────────────────────────────────────────────
+
+SECURITY_DB_FILE = "security_db_id.txt"
+
+# Prompt injection patterns — phrases that try to hijack Claude's behaviour
+INJECTION_PATTERNS = [
+    "ignore previous instructions", "ignore all instructions", "ignore your instructions",
+    "disregard previous", "disregard all previous", "forget everything",
+    "you are now", "you are a different", "pretend you are", "act as if you are",
+    "new persona", "your new instructions", "system prompt", "override instructions",
+    "jailbreak", "dan mode", "developer mode", "unrestricted mode",
+    "send this to", "forward this to", "email this to", "leak the data",
+    "print all tasks", "show all secrets", "reveal your instructions",
+    "what is your api key", "show credentials",
+]
+
+# Patterns that look like secrets — strip from Claude's replies
+SECRET_PATTERNS = [
+    r"sk-ant-[A-Za-z0-9\-_]{20,}",          # Anthropic API key
+    r"ntn_[A-Za-z0-9]{30,}",                 # Notion token
+    r"AAH[A-Za-z0-9\-_]{30,}",              # Telegram bot token suffix
+    r"Bearer [A-Za-z0-9\-_.]{20,}",          # Generic Bearer token
+    r"[A-Za-z0-9]{32,}:[A-Za-z0-9\-_]{20,}", # key:secret format
+]
+
+def check_prompt_injection(message: str):
+    """Return the matched pattern if injection detected, else None."""
+    lower = message.lower()
+    for pattern in INJECTION_PATTERNS:
+        if pattern in lower:
+            return pattern
+    return None
+
+def scan_for_secrets(text: str) -> str:
+    """Replace any secret-looking strings in Claude's reply with [REDACTED]."""
+    import re as _re
+    for pattern in SECRET_PATTERNS:
+        text = _re.sub(pattern, "[REDACTED]", text)
+    return text
+
+def get_security_db_id():
+    return _get_or_create_db(
+        SECURITY_DB_FILE, "🔐 Mira Security Log", "🔐",
+        {
+            "Event":      {"title": {}},
+            "Type":       {"select": {}},
+            "User ID":    {"rich_text": {}},
+            "User Name":  {"rich_text": {}},
+            "Details":    {"rich_text": {}},
+            "Timestamp":  {"rich_text": {}},
+        }
+    )
+
+def log_security_event(event_type: str, user_id: int, user_name: str, details: str):
+    """Write a security event to the Notion Security Log database."""
+    try:
+        db_id = get_security_db_id()
+        if not db_id:
+            return
+        timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
+        _notion_request("https://api.notion.com/v1/pages", {
+            "parent": {"database_id": db_id},
+            "properties": {
+                "Event":     {"title": [{"text": {"content": f"{event_type} — {timestamp}"}}]},
+                "Type":      {"select": {"name": event_type}},
+                "User ID":   {"rich_text": [{"text": {"content": str(user_id)}}]},
+                "User Name": {"rich_text": [{"text": {"content": user_name}}]},
+                "Details":   {"rich_text": [{"text": {"content": details[:1900]}}]},
+                "Timestamp": {"rich_text": [{"text": {"content": timestamp}}]},
+            }
+        })
+        logging.warning(f"[SECURITY] {event_type} | user={user_name}({user_id}) | {details}")
+    except Exception as e:
+        logging.error(f"Security log error: {e}")
+
+def run_boot_health_check():
+    """Check all integrations on startup and log failures."""
+    results = {}
+
+    # 1. Telegram — already connected if bot started, just mark OK
+    results["Telegram"] = "OK"
+
+    # 2. Claude API
+    try:
+        client.messages.create(model="claude-sonnet-4-6", max_tokens=5,
+                               messages=[{"role": "user", "content": "hi"}])
+        results["Claude API"] = "OK"
+    except Exception as e:
+        results["Claude API"] = f"FAIL: {e}"
+
+    # 3. Notion
+    try:
+        if notion and NOTION_TASKS_DB:
+            notion.databases.retrieve(NOTION_TASKS_DB)
+            results["Notion"] = "OK"
+        else:
+            results["Notion"] = "NOT CONFIGURED"
+    except Exception as e:
+        results["Notion"] = f"FAIL: {e}"
+
+    # 4. Google Calendar
+    try:
+        get_calendar_service()
+        results["Google Calendar"] = "OK"
+    except Exception as e:
+        results["Google Calendar"] = f"FAIL: {e}"
+
+    # Log results
+    failed = [k for k, v in results.items() if v.startswith("FAIL")]
+    status = "All systems OK" if not failed else f"FAIL: {', '.join(failed)}"
+    summary = " | ".join(f"{k}: {v}" for k, v in results.items())
+    logging.info(f"[BOOT CHECK] {summary}")
+
+    try:
+        log_security_event("Boot Check", 0, "system", f"{status} — {summary}")
+    except Exception:
+        pass
+
+    return results
 
 # ── Google Calendar ──────────────────────────────────────────────────────────
 
@@ -1082,7 +1213,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
     """Core logic: takes a text string and generates a response (used by both text and voice handlers)."""
     user_name = update.message.from_user.first_name
+    user_id   = update.effective_user.id
     save_chat_id(update.effective_chat.id)
+
+    # ── Security layer 1: Prompt injection firewall ──
+    matched = check_prompt_injection(user_message)
+    if matched:
+        increment_stat("errors")
+        log_security_event(
+            "Injection Attempt", user_id, user_name,
+            f"Blocked pattern: '{matched}' | Message: {user_message[:300]}"
+        )
+        await update.message.reply_text(
+            "⛔ That message looks like it's trying to manipulate me. I've logged this event.",
+            parse_mode="Markdown"
+        )
+        return
 
     # Build context for Claude
     tasks = load_tasks()
@@ -1125,6 +1271,16 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
         messages=conversation
     )
     reply = response.content[0].text
+
+    # ── Security layer 2: Secret leak scanner ──
+    reply_clean = scan_for_secrets(reply)
+    if reply_clean != reply:
+        log_security_event(
+            "Secret Leak Blocked", user_id, user_name,
+            "Claude's reply contained a secret-looking string — redacted before sending."
+        )
+        reply = reply_clean
+
     logging.info(f"Claude reply: {reply[:200]}")
 
     # Track token usage
@@ -1478,6 +1634,10 @@ async def post_init(app):
     ])
 
 def main():
+    # ── Security layer 3: Boot health check ──
+    logging.info("Running boot health check...")
+    run_boot_health_check()
+
     # Sync to Notion on startup
     logging.info("Syncing to Notion on startup...")
     background_notion_sync()
