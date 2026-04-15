@@ -3,11 +3,17 @@ import json
 import logging
 import re
 import tempfile
+import fnmatch
+import urllib.request
+import feedparser
+import pytz
 from datetime import datetime, timedelta
+from pathlib import Path
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import anthropic
 import whisper
+from notion_client import Client as NotionClient
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -17,6 +23,26 @@ logging.basicConfig(level=logging.INFO)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+NOTION_TASKS_DB = os.getenv("NOTION_TASKS_DB")
+NOTION_SHOPPING_DB = os.getenv("NOTION_SHOPPING_DB")
+NOTION_IDEAS_DB = os.getenv("NOTION_IDEAS_DB")
+
+IDEAS_FILE = "ideas.json"
+CHAT_IDS_FILE = "chat_ids.json"
+IST = pytz.timezone("Asia/Kolkata")
+
+notion = NotionClient(auth=NOTION_TOKEN) if NOTION_TOKEN else None
+
+# Only these Telegram user IDs can use Mira. Add yours and your wife's.
+ALLOWED_USERS_RAW = os.getenv("ALLOWED_USERS", "")
+ALLOWED_USERS = set(int(uid.strip()) for uid in ALLOWED_USERS_RAW.split(",") if uid.strip().isdigit())
+
+def is_allowed(update) -> bool:
+    """Return True if the sender is on the allowlist (or allowlist is empty)."""
+    if not ALLOWED_USERS:
+        return True  # not configured yet — open access
+    return update.effective_user.id in ALLOWED_USERS
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -107,9 +133,281 @@ def save_conversation(messages):
     with open(CONVERSATION_FILE, "w") as f:
         json.dump(messages, f, indent=2)
 
+# ── Ideas & Chat IDs persistence ─────────────────────────────────────────────
+
+def load_ideas():
+    if os.path.exists(IDEAS_FILE):
+        with open(IDEAS_FILE) as f:
+            return json.load(f)
+    return []
+
+def save_ideas(ideas):
+    with open(IDEAS_FILE, "w") as f:
+        json.dump(ideas, f, indent=2)
+
+def load_chat_ids():
+    if os.path.exists(CHAT_IDS_FILE):
+        with open(CHAT_IDS_FILE) as f:
+            return json.load(f)
+    return []
+
+def save_chat_id(chat_id: int):
+    ids = load_chat_ids()
+    if chat_id not in ids:
+        ids.append(chat_id)
+        with open(CHAT_IDS_FILE, "w") as f:
+            json.dump(ids, f)
+
+# ── Market indices (real-time via yfinance) ────────────────────────────────────
+
+INDICES = [
+    ("S&P 500",    "^GSPC",  "🇺🇸"),
+    ("Dow Jones",  "^DJI",   "🇺🇸"),
+    ("NASDAQ",     "^IXIC",  "🇺🇸"),
+    ("Nifty 50",   "^NSEI",  "🇮🇳"),
+    ("Sensex",     "^BSESN", "🇮🇳"),
+    ("Gold",       "GC=F",   "🥇"),
+    ("Silver",     "SI=F",   "🥈"),
+]
+
+def get_news_headlines() -> list[str]:
+    import yfinance as yf
+    lines = []
+    for name, ticker, flag in INDICES:
+        try:
+            t = yf.Ticker(ticker)
+            info = t.fast_info
+            price = info.last_price
+            prev  = info.previous_close
+            if price is None or prev is None:
+                continue
+            change     = price - prev
+            change_pct = (change / prev) * 100
+            arrow      = "▲" if change >= 0 else "▼"
+            sign       = "+" if change >= 0 else ""
+            lines.append(
+                f"{flag} *{name}:* {price:,.2f}  {arrow} {sign}{change_pct:.2f}%"
+            )
+        except Exception:
+            pass
+    return lines[:6]
+
+# ── Notion sync ──────────────────────────────────────────────────────────────
+
+def notion_add_task(title: str, added_by: str):
+    if not notion or not NOTION_TASKS_DB:
+        return
+    try:
+        notion.pages.create(
+            parent={"database_id": NOTION_TASKS_DB},
+            properties={
+                "Name":       {"title": [{"text": {"content": title}}]},
+                "Status":     {"select": {"name": "Pending"}},
+                "Added By":   {"rich_text": [{"text": {"content": added_by}}]},
+                "Created":    {"date": {"start": datetime.now(IST).isoformat()}},
+            }
+        )
+    except Exception as e:
+        logging.error(f"Notion task error: {e}")
+
+def notion_query_db(database_id: str, filter_body: dict = None) -> list:
+    """Query a Notion database via direct HTTP POST."""
+    if not NOTION_TOKEN:
+        return []
+    try:
+        payload = json.dumps({"filter": filter_body} if filter_body else {}).encode()
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/databases/{database_id}/query",
+            data=payload, method="POST",
+            headers={
+                "Authorization": f"Bearer {NOTION_TOKEN}",
+                "Notion-Version": "2022-06-28",
+                "Content-Type": "application/json"
+            }
+        )
+        res = urllib.request.urlopen(req)
+        return json.loads(res.read()).get("results", [])
+    except Exception as e:
+        logging.error(f"Notion query error: {e}")
+        return []
+
+def notion_get_tasks() -> list:
+    if not NOTION_TASKS_DB:
+        return []
+    try:
+        pages = notion_query_db(NOTION_TASKS_DB, {"property": "Status", "select": {"equals": "Pending"}})
+        tasks = []
+        for page in pages:
+            title = page["properties"].get("Name", {}).get("title", [])
+            name = title[0]["text"]["content"] if title else "Untitled"
+            tasks.append({"text": name, "page_id": page["id"]})
+        return tasks
+    except Exception as e:
+        logging.error(f"Notion fetch tasks error: {e}")
+        return []
+
+def notion_complete_task(page_id: str):
+    if not notion:
+        return
+    try:
+        notion.pages.update(
+            page_id=page_id,
+            properties={"Status": {"select": {"name": "Done"}}}
+        )
+    except Exception as e:
+        logging.error(f"Notion complete task error: {e}")
+
+def notion_add_shopping(item: str, added_by: str):
+    if not notion or not NOTION_SHOPPING_DB:
+        return
+    try:
+        notion.pages.create(
+            parent={"database_id": NOTION_SHOPPING_DB},
+            properties={
+                "Name":     {"title": [{"text": {"content": item}}]},
+                "Status":   {"select": {"name": "Needed"}},
+                "Added By": {"rich_text": [{"text": {"content": added_by}}]},
+                "Created":  {"date": {"start": datetime.now().isoformat()}},
+            }
+        )
+    except Exception as e:
+        logging.error(f"Notion shopping error: {e}")
+
+def notion_get_shopping() -> list:
+    if not NOTION_SHOPPING_DB:
+        return []
+    try:
+        pages = notion_query_db(NOTION_SHOPPING_DB, {"property": "Status", "select": {"equals": "Needed"}})
+        items = []
+        for page in pages:
+            title = page["properties"].get("Name", {}).get("title", [])
+            name = title[0]["text"]["content"] if title else "Untitled"
+            items.append({"name": name, "page_id": page["id"]})
+        return items
+    except Exception as e:
+        logging.error(f"Notion fetch shopping error: {e}")
+        return []
+
+def notion_bought_item(page_id: str):
+    if not notion:
+        return
+    try:
+        notion.pages.update(
+            page_id=page_id,
+            properties={"Status": {"select": {"name": "Bought"}}}
+        )
+    except Exception as e:
+        logging.error(f"Notion bought item error: {e}")
+
+def notion_add_idea(title: str, idea_type: str, added_by: str):
+    if not notion or not NOTION_IDEAS_DB:
+        return
+    try:
+        notion.pages.create(
+            parent={"database_id": NOTION_IDEAS_DB},
+            properties={
+                "Name":     {"title": [{"text": {"content": title}}]},
+                "Type":     {"select": {"name": idea_type}},
+                "Status":   {"select": {"name": "New"}},
+                "Added By": {"rich_text": [{"text": {"content": added_by}}]},
+                "Created":  {"date": {"start": datetime.now().isoformat()}},
+            }
+        )
+    except Exception as e:
+        logging.error(f"Notion idea error: {e}")
+
+def notion_get_ideas() -> list:
+    if not NOTION_IDEAS_DB:
+        return []
+    try:
+        pages = notion_query_db(NOTION_IDEAS_DB)
+        ideas = []
+        for page in pages:
+            title = page["properties"].get("Name", {}).get("title", [])
+            name = title[0]["text"]["content"] if title else "Untitled"
+            idea_type = page["properties"].get("Type", {}).get("select", {})
+            ideas.append({"text": name, "type": idea_type.get("name", "Other") if idea_type else "Other"})
+        return ideas
+    except Exception as e:
+        logging.error(f"Notion fetch ideas error: {e}")
+        return []
+
+def sync_tasks_to_notion(tasks: list, added_by: str):
+    """Sync any new local tasks to Notion."""
+    if not notion:
+        return
+    existing = [t["text"].lower() for t in notion_get_tasks()]
+    for task in tasks:
+        if task["text"].lower() not in existing and not task.get("done"):
+            notion_add_task(task["text"], added_by)
+
+def sync_shopping_to_notion(items: list, added_by: str):
+    """Sync any new local shopping items to Notion."""
+    if not notion:
+        return
+    existing = [i["name"].lower() for i in notion_get_shopping()]
+    for item in items:
+        if item["name"].lower() not in existing and not item.get("bought"):
+            notion_add_shopping(item["name"], added_by)
+
+# ── File search ──────────────────────────────────────────────────────────────
+
+SEARCH_DIRS = [
+    Path.home() / "Desktop",
+    Path.home() / "Documents",
+    Path.home() / "Downloads",
+    Path.home() / "Pictures",
+    Path.home() / "Movies",
+    Path.home() / "Music",
+]
+
+def search_files(query: str, max_results: int = 5) -> list[Path]:
+    """Search for files matching query keywords across common Mac directories."""
+    keywords = query.lower().split()
+    matches = []
+
+    for search_dir in SEARCH_DIRS:
+        if not search_dir.exists():
+            continue
+        try:
+            for root, dirs, files in os.walk(search_dir):
+                # Skip hidden folders
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for filename in files:
+                    if filename.startswith('.'):
+                        continue
+                    name_lower = filename.lower()
+                    if all(kw in name_lower for kw in keywords):
+                        matches.append(Path(root) / filename)
+                        if len(matches) >= max_results:
+                            return matches
+        except PermissionError:
+            continue
+
+    # If no exact match, try partial — any keyword matches
+    if not matches:
+        for search_dir in SEARCH_DIRS:
+            if not search_dir.exists():
+                continue
+            try:
+                for root, dirs, files in os.walk(search_dir):
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    for filename in files:
+                        if filename.startswith('.'):
+                            continue
+                        name_lower = filename.lower()
+                        if any(kw in name_lower for kw in keywords):
+                            matches.append(Path(root) / filename)
+                            if len(matches) >= max_results:
+                                return matches
+            except PermissionError:
+                continue
+
+    return matches
+
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are a Chief of Staff assistant for a couple — Abhishek and his wife.
+SYSTEM_PROMPT = """You are Mira, a personal AI assistant for a couple — Abhishek and Alekya.
 You help them manage their lives together — tasks, reminders, calendar events, decisions, shopping, finances, and more.
 
 You are warm, organised, proactive, and concise. You speak like a trusted personal assistant.
@@ -121,6 +419,9 @@ Current task list:
 
 Shopping list:
 {shopping}
+
+Recent ideas:
+{ideas}
 
 Upcoming calendar events:
 {events}
@@ -146,16 +447,131 @@ If the user wants to add items to the shopping list (e.g. "add milk to shopping"
 
 Only include the <shopping> block when the user clearly wants to add grocery/shopping items.
 
+IMPORTANT — File search detection:
+If the user explicitly wants to find or retrieve a specific FILE or DOCUMENT from their Mac laptop (e.g. "find the invoice pdf", "send me the contract", "where is the presentation file", "share the photo from last year"), respond with a JSON block at the END of your reply:
+<filesearch>
+{{"query": "keywords to search for in filename"}}
+</filesearch>
+
+Only include <filesearch> for actual file/document retrieval requests. Do NOT use it for shopping items, tasks, or general questions.
+
+IMPORTANT — Mark a specific task done:
+If the user says a specific task is done (e.g. "1st task done", "mark task 2 done", "I called the dentist", "paid the rent", "dentist appointment done"), respond with:
+<taskdone>{{"match": "partial text or number to identify the task"}}</taskdone>
+
+Use a number (1, 2, 3) if the user says "1st", "2nd", "first", "second" etc. Otherwise use key words from the task name.
+
+IMPORTANT — Mark all tasks done:
+If the user wants to mark all tasks as done (e.g. "mark all tasks done", "clear all tasks", "all done", "everything is done"), respond with:
+<markalldone></markalldone>
+
+IMPORTANT — Mark a specific shopping item as bought:
+If the user says a specific item is bought (e.g. "bought milk", "got the eggs", "2nd item done", "picked up bread"), respond with:
+<shoppingdone>{{"match": "partial text or number to identify the item"}}</shoppingdone>
+
+IMPORTANT — Mark all shopping as bought:
+If the user wants to mark all shopping items as bought (e.g. "bought everything", "mark all shopping done", "all items bought"), respond with:
+<markallbought></markallbought>
+
+IMPORTANT — Mark an idea as done:
+If the user says an idea is completed or no longer relevant (e.g. "published the blog", "built that AI product", "1st idea done", "remove that idea"), respond with:
+<ideadone>{{"match": "partial text or number to identify the idea"}}</ideadone>
+
+IMPORTANT — Idea capture:
+If the user shares an idea (blog idea, AI product, business idea, article to read, or any creative thought they want to save), respond with a JSON block at the END of your reply:
+<idea>
+{{"title": "concise idea title", "type": "Blog Idea|AI Product|Article to Read|Business Idea|Other"}}
+</idea>
+
+Types must be exactly one of: Blog Idea, AI Product, Article to Read, Business Idea, Other.
+
 Group chat rules:
-- Both Abhishek and his wife share the same task list and calendar
+- Both Abhishek and Alekya share the same task list and calendar
 - Address people by their first name when relevant
 - Keep responses short and use bullet points when listing things."""
 
 # ── Command handlers ──────────────────────────────────────────────────────────
 
+async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
+    await send_daily_digest(context)
+
+async def notion_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
+    await update.message.reply_text("🔄 Syncing with Notion...")
+    try:
+        # Sync tasks
+        local_tasks = load_tasks()
+        synced_tasks = 0
+        existing_notion_tasks = [t["text"].lower() for t in notion_get_tasks()]
+        for task in local_tasks:
+            if not task.get("done") and task["text"].lower() not in existing_notion_tasks:
+                notion_add_task(task["text"], task.get("added_by", "Mira"))
+                synced_tasks += 1
+
+        # Sync shopping
+        local_shopping = load_shopping()
+        synced_items = 0
+        existing_notion_shopping = [i["name"].lower() for i in notion_get_shopping()]
+        for item in local_shopping:
+            if not item.get("bought") and item["name"].lower() not in existing_notion_shopping:
+                notion_add_shopping(item["name"], item.get("added_by", "Mira"))
+                synced_items += 1
+
+        await update.message.reply_text(
+            f"✅ *Notion sync complete!*\n\n"
+            f"📋 Tasks synced: {synced_tasks}\n"
+            f"🛒 Shopping items synced: {synced_items}\n\n"
+            f"Open Notion to see your data!",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Notion sync failed: {str(e)}")
+
+async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /find <filename or keywords>\nExample: /find invoice\nExample: /find pan card pdf")
+        return
+
+    query = " ".join(context.args)
+    await update.message.reply_text(f"🔍 Searching your Mac for: *{query}*...", parse_mode="Markdown")
+
+    found = search_files(query)
+    if not found:
+        await update.message.reply_text(f"😕 No files found matching *{query}*.\n\nSearched in: Desktop, Documents, Downloads, Pictures, Movies, Music.", parse_mode="Markdown")
+        return
+
+    await update.message.reply_text(f"Found *{len(found)}* file(s)! Sending now...", parse_mode="Markdown")
+    for fpath in found:
+        try:
+            size_mb = fpath.stat().st_size / (1024 * 1024)
+            if size_mb > 50:
+                await update.message.reply_text(f"⚠️ *{fpath.name}* is {size_mb:.1f}MB — too large for Telegram (50MB limit).\n📁 Path: `{fpath}`", parse_mode="Markdown")
+            else:
+                with open(fpath, "rb") as f:
+                    await update.message.reply_document(document=f, filename=fpath.name, caption=f"📎 {fpath.name}\n📁 {fpath.parent}")
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ Could not send *{fpath.name}*: {str(e)}", parse_mode="Markdown")
+
+async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    name = update.effective_user.first_name
+    await update.message.reply_text(f"👤 *{name}*, your Telegram user ID is:\n`{uid}`\n\nShare this with Abhishek to get added to Mira's allowlist.", parse_mode="Markdown")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
+    save_chat_id(update.effective_chat.id)
     await update.message.reply_text(
-        "👋 Hi! I'm your Chief of Staff.\n\n"
+        "👋 Hi! I'm Mira, your personal family assistant.\n\n"
         "I can help both of you with:\n"
         "• 📋 Tasks & to-dos\n"
         "• 📅 Google Calendar events & reminders\n"
@@ -220,6 +636,11 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if t["text"] == task_text:
                 t["done"] = True
         save_tasks(tasks)
+        # Mark done in Notion too
+        notion_tasks = notion_get_tasks()
+        for nt in notion_tasks:
+            if nt["text"].lower() == task_text.lower():
+                notion_complete_task(nt["page_id"])
         user_name = update.message.from_user.first_name
         await update.message.reply_text(f"✅ *{task_text}* marked done by {user_name}!", parse_mode="Markdown")
     except (IndexError, ValueError):
@@ -276,6 +697,11 @@ async def bought_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if i["name"] == item_name:
                 i["bought"] = True
         save_shopping(items)
+        # Mark bought in Notion too
+        notion_items = notion_get_shopping()
+        for ni in notion_items:
+            if ni["name"].lower() == item_name.lower():
+                notion_bought_item(ni["page_id"])
         user_name = update.message.from_user.first_name
         await update.message.reply_text(f"✅ *{item_name}* marked as bought by {user_name}!", parse_mode="Markdown")
     except (IndexError, ValueError):
@@ -299,6 +725,9 @@ def get_whisper_model():
     return whisper_model
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
     await update.message.reply_text("🎙️ Got your voice message, transcribing...")
     try:
         voice = update.message.voice or update.message.audio
@@ -329,6 +758,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Main message handler ──────────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
     chat_type = update.message.chat.type
     user_message = update.message.text
     bot_username = context.bot.username
@@ -339,7 +771,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                          "schedule", "need to", "have to", "don't forget", "todo", "to do",
                          "summarize", "summary", "shopping", "budget", "finance", "plan",
                          "what's on", "whats on", "calendar", "appointment", "book", "meeting",
-                         "tomorrow", "tonight", "next week", "at ", "pm", "am"]
+                         "tomorrow", "tonight", "next week", "at ", "pm", "am",
+                         "find", "search", "send me", "share", "file", "document", "photo",
+                         "pdf", "invoice", "contract", "presentation", "where is"]
         triggered = any(w in user_message.lower() for w in trigger_words)
         if not bot_mentioned and not triggered:
             return
@@ -350,6 +784,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
     """Core logic: takes a text string and generates a response (used by both text and voice handlers)."""
     user_name = update.message.from_user.first_name
+    save_chat_id(update.effective_chat.id)
 
     # Build context for Claude
     tasks = load_tasks()
@@ -371,10 +806,14 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception:
         event_text = "Calendar not available."
 
+    ideas = load_ideas()
+    ideas_text = "\n".join([f"- [{i['type']}] {i['text']}" for i in ideas[-5:]]) if ideas else "No ideas yet."
+
     system = SYSTEM_PROMPT.format(
         datetime=datetime.now().strftime("%A, %B %d %Y at %I:%M %p"),
         tasks=task_text,
         shopping=shopping_text,
+        ideas=ideas_text,
         events=event_text
     )
 
@@ -388,9 +827,34 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
         messages=conversation
     )
     reply = response.content[0].text
+    logging.info(f"Claude reply: {reply[:200]}")
 
     conversation.append({"role": "assistant", "content": reply})
     save_conversation(conversation)
+
+    # Check if Claude wants to search for a file
+    file_match = re.search(r"<filesearch>(.*?)</filesearch>", reply, re.DOTALL)
+    if file_match:
+        try:
+            file_data = json.loads(file_match.group(1).strip())
+            # Handle both "query" and '"query"' keys (Claude sometimes wraps in extra quotes)
+            query = file_data.get("query") or file_data.get('"query"', "")
+            await update.message.reply_text(f"🔍 Searching your Mac for: *{query}*...", parse_mode="Markdown")
+            found = search_files(query)
+            if not found:
+                await update.message.reply_text(f"😕 Couldn't find any files matching *{query}* in Desktop, Documents, Downloads, Pictures, Movies or Music.", parse_mode="Markdown")
+            else:
+                await update.message.reply_text(f"Found {len(found)} file(s)! Sending now...")
+                for fpath in found:
+                    size_mb = fpath.stat().st_size / (1024 * 1024)
+                    if size_mb > 50:
+                        await update.message.reply_text(f"⚠️ *{fpath.name}* is {size_mb:.1f}MB — too large to send via Telegram (50MB limit).\nPath: `{fpath}`", parse_mode="Markdown")
+                    else:
+                        with open(fpath, "rb") as f:
+                            await update.message.reply_document(document=f, filename=fpath.name, caption=f"📎 {fpath.name}")
+        except Exception as e:
+            logging.error(f"File search error: {e}")
+            await update.message.reply_text("⚠️ Something went wrong while searching for the file.")
 
     # Check if Claude wants to add shopping items
     shopping_match = re.search(r"<shopping>(.*?)</shopping>", reply, re.DOTALL)
@@ -404,14 +868,153 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 if item.lower() not in existing:
                     shopping.append({"name": item, "bought": False, "added_by": user_name, "date": datetime.now().isoformat()})
                     added.append(item)
+                    notion_add_shopping(item, user_name)
             save_shopping(shopping)
         except Exception as e:
             logging.error(f"Shopping error: {e}")
 
     # Check if Claude wants to create a calendar event
     calendar_match = re.search(r"<calendar>(.*?)</calendar>", reply, re.DOTALL)
-    clean_reply = re.sub(r"<shopping>.*?</shopping>", "", reply, flags=re.DOTALL)
-    clean_reply = re.sub(r"<calendar>.*?</calendar>", "", clean_reply, flags=re.DOTALL).strip()
+    # Handle specific task done via natural language
+    taskdone_match = re.search(r"<taskdone>(.*?)</taskdone>", reply, re.DOTALL)
+    if taskdone_match:
+        try:
+            data = json.loads(taskdone_match.group(1).strip())
+            match = str(data.get("match", "")).strip()
+            tasks = load_tasks()
+            pending = [t for t in tasks if not t.get("done")]
+            matched_task = None
+
+            # Try matching by number
+            if match.isdigit():
+                idx = int(match) - 1
+                if 0 <= idx < len(pending):
+                    matched_task = pending[idx]["text"]
+            else:
+                # Match by keywords
+                for t in pending:
+                    if match.lower() in t["text"].lower() or t["text"].lower() in match.lower():
+                        matched_task = t["text"]
+                        break
+
+            if matched_task:
+                for t in tasks:
+                    if t["text"] == matched_task:
+                        t["done"] = True
+                save_tasks(tasks)
+                for nt in notion_get_tasks():
+                    if nt["text"].lower() == matched_task.lower():
+                        notion_complete_task(nt["page_id"])
+                        break
+        except Exception as e:
+            logging.error(f"Task done error: {e}")
+
+    # Handle specific shopping item bought via natural language
+    shoppingdone_match = re.search(r"<shoppingdone>(.*?)</shoppingdone>", reply, re.DOTALL)
+    if shoppingdone_match:
+        try:
+            data = json.loads(shoppingdone_match.group(1).strip())
+            match = str(data.get("match", "")).strip()
+            items = load_shopping()
+            pending = [i for i in items if not i.get("bought")]
+            matched_item = None
+            if match.isdigit():
+                idx = int(match) - 1
+                if 0 <= idx < len(pending):
+                    matched_item = pending[idx]["name"]
+            else:
+                for i in pending:
+                    if match.lower() in i["name"].lower() or i["name"].lower() in match.lower():
+                        matched_item = i["name"]
+                        break
+            if matched_item:
+                for i in items:
+                    if i["name"] == matched_item:
+                        i["bought"] = True
+                save_shopping(items)
+                for ni in notion_get_shopping():
+                    if ni["name"].lower() == matched_item.lower():
+                        notion_bought_item(ni["page_id"])
+                        break
+        except Exception as e:
+            logging.error(f"Shopping done error: {e}")
+
+    # Handle specific idea done via natural language
+    ideadone_match = re.search(r"<ideadone>(.*?)</ideadone>", reply, re.DOTALL)
+    if ideadone_match:
+        try:
+            data = json.loads(ideadone_match.group(1).strip())
+            match = str(data.get("match", "")).strip()
+            ideas = load_ideas()
+            matched_idea = None
+            if match.isdigit():
+                idx = int(match) - 1
+                if 0 <= idx < len(ideas):
+                    matched_idea = ideas[idx]["text"]
+            else:
+                for i in ideas:
+                    if match.lower() in i["text"].lower() or i["text"].lower() in match.lower():
+                        matched_idea = i["text"]
+                        break
+            if matched_idea:
+                # Mark done in local ideas
+                for i in ideas:
+                    if i["text"] == matched_idea:
+                        i["done"] = True
+                save_ideas(ideas)
+                # Archive in Notion
+                pages = notion_query_db(NOTION_IDEAS_DB)
+                for page in pages:
+                    title = page["properties"].get("Name", {}).get("title", [])
+                    name = title[0]["text"]["content"] if title else ""
+                    if matched_idea.lower() in name.lower():
+                        notion.pages.update(page_id=page["id"], properties={"Status": {"select": {"name": "Done"}}})
+                        break
+        except Exception as e:
+            logging.error(f"Idea done error: {e}")
+
+    # Handle mark all tasks done
+    if re.search(r"<markalldone\s*/?>", reply, re.DOTALL):
+        tasks = load_tasks()
+        for t in tasks:
+            t["done"] = True
+        save_tasks(tasks)
+        for nt in notion_get_tasks():
+            notion_complete_task(nt["page_id"])
+
+    # Handle mark all shopping bought
+    if re.search(r"<markallbought\s*/?>", reply, re.DOTALL):
+        items = load_shopping()
+        for i in items:
+            i["bought"] = True
+        save_shopping(items)
+        for ni in notion_get_shopping():
+            notion_bought_item(ni["page_id"])
+
+    # Handle idea capture
+    idea_match = re.search(r"<idea>(.*?)</idea>", reply, re.DOTALL)
+    if idea_match:
+        try:
+            idea_data = json.loads(idea_match.group(1).strip())
+            title = idea_data.get("title", "")
+            idea_type = idea_data.get("type", "Other")
+            if title:
+                ideas = load_ideas()
+                ideas.append({"text": title, "type": idea_type, "added_by": user_name, "date": datetime.now().isoformat()})
+                save_ideas(ideas)
+                notion_add_idea(title, idea_type, user_name)
+        except Exception as e:
+            logging.error(f"Idea capture error: {e}")
+
+    clean_reply = re.sub(r"<idea>.*?</idea>", "", reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<shopping>.*?</shopping>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<calendar>.*?</calendar>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<filesearch>.*?</filesearch>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<taskdone>.*?</taskdone>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<shoppingdone>.*?</shoppingdone>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<ideadone>.*?</ideadone>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<markalldone\s*/?>", "", clean_reply)
+    clean_reply = re.sub(r"<markallbought\s*/?>", "", clean_reply).strip()
 
     if calendar_match:
         try:
@@ -428,23 +1031,156 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
             logging.error(f"Calendar error: {e}")
             clean_reply += "\n\n⚠️ Couldn't create the calendar event. Try /calendar to check."
 
-    # Auto-save tasks mentioned in message
+    # Auto-save tasks mentioned in message (skip if it's a shopping message)
+    shopping_keywords = ["buy", "shopping", "groceries", "grocery", "supermarket", "get some", "pick up"]
+    is_shopping_message = any(kw in user_message.lower() for kw in shopping_keywords)
     task_keywords = ["need to", "have to", "must", "don't forget", "todo", "to do"]
-    if any(kw in user_message.lower() for kw in task_keywords):
+    if not is_shopping_message and any(kw in user_message.lower() for kw in task_keywords):
         for line in user_message.split('\n'):
             line = line.strip().lstrip('-•*123456789. ')
             if len(line) > 5 and line not in [t['text'] for t in tasks]:
                 tasks.append({"text": line, "done": False, "added_by": user_name,
                                "date": datetime.now().isoformat()})
+                notion_add_task(line, user_name)
         save_tasks(tasks)
 
-    await update.message.reply_text(clean_reply, parse_mode="Markdown")
+    if clean_reply:
+        try:
+            await update.message.reply_text(clean_reply, parse_mode="Markdown")
+        except Exception:
+            # Fallback to plain text if Markdown parsing fails
+            await update.message.reply_text(clean_reply)
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+async def send_daily_digest(context):
+    """Sends 7 AM IST digest to all registered chats."""
+    chat_ids = load_chat_ids()
+    if not chat_ids:
+        return
+
+    now = datetime.now(IST).strftime("%A, %B %d %Y")
+
+    # Tasks — read from Notion (source of truth, only Pending)
+    notion_tasks = notion_get_tasks()
+    tasks_text = "\n".join([f"  {i+1}. {t['text']}" for i, t in enumerate(notion_tasks)]) if notion_tasks else "  ✅ All clear!"
+
+    # Shopping — read from Notion (only Needed)
+    notion_shopping = notion_get_shopping()
+    shopping_text = "\n".join([f"  • {s['name']}" for s in notion_shopping]) if notion_shopping else "  🛒 Nothing needed!"
+
+    # Ideas — read from Notion
+    notion_ideas = notion_get_ideas()
+    recent_ideas = notion_ideas[-5:] if notion_ideas else []
+    ideas_text = "\n".join([f"  💡 [{i['type']}] {i['text']}" for i in recent_ideas]) if recent_ideas else "  No new ideas yet!"
+
+    # News
+    headlines = get_news_headlines()
+    news_text = "\n".join(headlines[:6]) if headlines else "  Could not fetch news."
+
+    msg = (
+        f"🌅 *Good morning, Abhishek & Alekya!*\n"
+        f"_{now}_\n\n"
+        f"📋 *Pending Tasks:*\n{tasks_text}\n\n"
+        f"🛒 *Shopping List:*\n{shopping_text}\n\n"
+        f"💡 *Recent Ideas:*\n{ideas_text}\n\n"
+        f"📰 *Morning Headlines:*\n{news_text}"
+    )
+
+    for chat_id in chat_ids:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
+        except Exception as e:
+            logging.error(f"Digest send error for {chat_id}: {e}")
+
+def notion_dedup_db(database_id: str, name_key: str = "Name"):
+    """Remove duplicate entries from a Notion database, keeping the first occurrence."""
+    try:
+        pages = notion_query_db(database_id)
+        seen = {}
+        for page in pages:
+            title = page["properties"].get(name_key, {}).get("title", [])
+            name = title[0]["text"]["content"].lower().strip() if title else ""
+            if name in seen:
+                # Archive the duplicate
+                payload = json.dumps({"archived": True}).encode()
+                req = urllib.request.Request(
+                    f"https://api.notion.com/v1/pages/{page['id']}",
+                    data=payload, method="PATCH",
+                    headers={
+                        "Authorization": f"Bearer {NOTION_TOKEN}",
+                        "Notion-Version": "2022-06-28",
+                        "Content-Type": "application/json"
+                    }
+                )
+                urllib.request.urlopen(req)
+                logging.info(f"Removed duplicate: {name}")
+            else:
+                seen[name] = page["id"]
+    except Exception as e:
+        logging.error(f"Notion dedup error: {e}")
+
+def background_notion_sync():
+    """Silently sync local tasks and shopping to Notion, with dedup."""
+    try:
+        # Dedup first
+        if NOTION_TASKS_DB:
+            notion_dedup_db(NOTION_TASKS_DB)
+        if NOTION_SHOPPING_DB:
+            notion_dedup_db(NOTION_SHOPPING_DB)
+        if NOTION_IDEAS_DB:
+            notion_dedup_db(NOTION_IDEAS_DB)
+
+        # Sync tasks
+        tasks = load_tasks()
+        existing_tasks = [t["text"].lower() for t in notion_get_tasks()]
+        for task in tasks:
+            if not task.get("done") and task["text"].lower() not in existing_tasks:
+                notion_add_task(task["text"], task.get("added_by", "Mira"))
+
+        # Sync shopping
+        items = load_shopping()
+        existing_items = [i["name"].lower() for i in notion_get_shopping()]
+        for item in items:
+            if not item.get("bought") and item["name"].lower() not in existing_items:
+                notion_add_shopping(item["name"], item.get("added_by", "Mira"))
+
+    except Exception as e:
+        logging.error(f"Background Notion sync error: {e}")
+
+async def post_init(app):
+    await app.bot.set_my_commands([
+        ("digest",    "Morning digest: tasks, shopping, ideas & markets"),
+        ("tasks",     "Show all pending tasks"),
+        ("add",       "Add a task — /add Buy groceries"),
+        ("done",      "Mark a task done — /done 1"),
+        ("clear",     "Clear all completed tasks"),
+        ("shopping",  "Show shopping list"),
+        ("bought",    "Mark item bought — /bought 1"),
+        ("clearshop", "Clear all bought items from shopping list"),
+        ("calendar",  "Show upcoming calendar events"),
+        ("find",      "Search a file on MacBook — /find filename"),
+        ("notion",    "Force sync to Notion"),
+        ("myid",      "Show your Telegram user ID"),
+    ])
+
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # Sync to Notion on startup
+    logging.info("Syncing to Notion on startup...")
+    background_notion_sync()
+
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+
+    # Schedule daily digest at 7:00 AM IST (01:30 UTC)
+    app.job_queue.run_daily(
+        send_daily_digest,
+        time=datetime.now(IST).replace(hour=7, minute=0, second=0, microsecond=0).timetz()
+    )
     app.add_handler(CommandHandler("start",    start))
+    app.add_handler(CommandHandler("myid",     myid_command))
+    app.add_handler(CommandHandler("find",     find_command))
+    app.add_handler(CommandHandler("notion",   notion_command))
+    app.add_handler(CommandHandler("digest",   digest_command))
     app.add_handler(CommandHandler("tasks",    tasks_command))
     app.add_handler(CommandHandler("calendar", calendar_command))
     app.add_handler(CommandHandler("done",     done_command))
@@ -455,7 +1191,9 @@ def main():
     app.add_handler(CommandHandler("clearshop", clearshop_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
-    print("🤖 Chief of Staff bot is running...")
+
+
+    print("🤖 Mira is running...")
     app.run_polling()
 
 if __name__ == "__main__":

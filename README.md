@@ -1,8 +1,8 @@
-# Chief of Staff — AI Family Assistant
+# Chief of Staff — AI Family Assistant (Mira)
 
-> An AI-powered personal assistant built for couples. Manages tasks, shopping, calendar events, and more — all through a shared Telegram chat.
+> An AI-powered personal assistant built for couples. Manages tasks, shopping, calendar events, ideas, and more — all through a shared Telegram chat.
 
-Built in one evening using Claude AI, Python, Telegram Bot API, Google Calendar, and OpenAI Whisper for voice.
+Built using Claude AI, Python, Telegram Bot API, Google Calendar, Notion, and OpenAI Whisper for voice.
 
 ---
 
@@ -18,10 +18,17 @@ Managing a household together is chaotic. Tasks fall through the cracks, shoppin
 |---------|-------------|
 | 📋 Task Management | Add, view, and complete shared tasks. Tracks who added what. |
 | 🛒 Shopping List | Add items naturally ("add milk and eggs"), tick off at the store |
+| 💡 Ideas Capture | Save blog ideas, AI product ideas, and more with auto-tagging |
 | 📅 Google Calendar | Creates real calendar events from natural language with reminders |
 | 🎙️ Voice Messages | Send a voice note — it transcribes and responds intelligently |
 | 👥 Group Chat | Works in a shared Telegram group for both partners |
 | 🧠 Context Memory | Remembers recent conversation for natural follow-ups |
+| 🗃️ Notion Sync | All tasks, shopping, and ideas auto-sync to Notion databases |
+| 📰 Morning Digest | Daily 7 AM digest with tasks, shopping, ideas, and live market data |
+| 📈 Live Market Indices | Real-time prices and % change for major global and Indian indices |
+| 🔍 File Search | Search and retrieve any file from your MacBook via chat |
+| 🔐 Security | Only authorised family members can use the bot |
+| ⌨️ Command Autocomplete | Type `/` to see all commands with descriptions instantly |
 
 ---
 
@@ -30,25 +37,27 @@ Managing a household together is chaotic. Tasks fall through the cracks, shoppin
 ```
 You (voice/text) → Telegram → Bot → Claude AI → Action
                                           ↓
-                              Google Calendar / Task List / Shopping List
+                    Google Calendar / Notion / Task List / Shopping / Ideas
 ```
 
 1. You send a message (text or voice) in Telegram
 2. Voice messages are transcribed using OpenAI Whisper
-3. The message is sent to Claude with full context (tasks, shopping, calendar)
+3. The message is sent to Claude with full context (tasks, shopping, calendar, ideas)
 4. Claude understands intent and responds naturally
-5. If a calendar event is detected, it's created automatically on Google Calendar
-6. If shopping items are detected, they're added to the shared shopping list
+5. Actions are taken automatically — calendar events, task additions, Notion sync, etc.
 
 ---
 
 ## Tech Stack
 
 - **Language:** Python 3
-- **AI Brain:** Claude Sonnet (Anthropic API)
+- **AI Brain:** Claude Sonnet 4.6 (Anthropic API)
 - **Interface:** Telegram Bot API (`python-telegram-bot`)
 - **Voice:** OpenAI Whisper (local, runs on device)
 - **Calendar:** Google Calendar API
+- **Database:** Notion API (tasks, shopping, ideas)
+- **Market Data:** yfinance (real-time stock/commodity prices)
+- **Scheduling:** APScheduler (daily digest at 7 AM IST)
 - **Audio Processing:** ffmpeg
 
 ---
@@ -61,6 +70,7 @@ You (voice/text) → Telegram → Bot → Claude AI → Action
 - [Telegram account](https://telegram.org)
 - [Anthropic API key](https://console.anthropic.com)
 - [Google Cloud project](https://console.cloud.google.com) with Calendar API enabled
+- [Notion integration token](https://www.notion.so/my-integrations)
 - ffmpeg installed (`brew install ffmpeg` on Mac)
 
 ### 2. Clone the repo
@@ -74,7 +84,8 @@ cd chief-of-staff
 
 ```bash
 pip3 install python-telegram-bot anthropic openai-whisper \
-             google-api-python-client google-auth-httplib2 google-auth-oauthlib
+             google-api-python-client google-auth-httplib2 google-auth-oauthlib \
+             notion-client feedparser apscheduler pytz yfinance
 brew install ffmpeg
 ```
 
@@ -92,37 +103,56 @@ brew install ffmpeg
 4. Create **OAuth 2.0 credentials** (Desktop app type)
 5. Download the JSON file and save it as `credentials.json` in the project folder
 
-### 6. Configure environment
+### 6. Set up Notion
 
-Create a `.env` file (or set environment variables):
+1. Go to [Notion Integrations](https://www.notion.so/my-integrations) and create a new integration
+2. Create three databases in Notion: **Tasks**, **Shopping**, **Ideas**
+3. Share each database with your integration
+4. Copy the database IDs from each database URL
+
+### 7. Configure environment
+
+Create a `.env` file:
 
 ```bash
 TELEGRAM_TOKEN=your_telegram_bot_token
 ANTHROPIC_API_KEY=your_anthropic_api_key
+NOTION_TOKEN=your_notion_integration_token
+NOTION_TASKS_DB=your_tasks_database_id
+NOTION_SHOPPING_DB=your_shopping_database_id
+NOTION_IDEAS_DB=your_ideas_database_id
+ALLOWED_USERS=your_telegram_user_id,partner_telegram_user_id
 ```
 
-### 7. Authorise Google Calendar (one-time)
+> To find your Telegram user ID, message the bot and use `/myid`
+
+### 8. Authorise Google Calendar (one-time)
 
 ```bash
-ANTHROPIC_API_KEY=... python3 -c "from bot import get_calendar_service; get_calendar_service()"
+python3 -c "from bot import get_calendar_service; get_calendar_service()"
 ```
 
 A browser window will open — sign in and allow access.
 
-### 8. Run the bot
+### 9. Run the bot
 
 ```bash
-TELEGRAM_TOKEN=your_token ANTHROPIC_API_KEY=your_key python3 bot.py
+TELEGRAM_TOKEN=your_token ANTHROPIC_API_KEY=your_key \
+NOTION_TOKEN=your_token NOTION_TASKS_DB=... \
+NOTION_SHOPPING_DB=... NOTION_IDEAS_DB=... \
+python3 bot.py
 ```
 
 ---
 
 ## Bot Commands
 
+Type `/` in Telegram to see all commands with auto-suggestions.
+
 | Command | Description |
 |---------|-------------|
-| `/start` | Introduction and help |
-| `/tasks` | View full task list |
+| `/digest` | Morning digest: tasks, shopping, ideas & live market data |
+| `/tasks` | View all pending tasks |
 | `/add <task>` | Add a task manually |
 | `/done <number>` | Mark a task as completed |
 | `/clear` | Remove all completed tasks |
@@ -130,6 +160,9 @@ TELEGRAM_TOKEN=your_token ANTHROPIC_API_KEY=your_key python3 bot.py
 | `/bought <number>` | Mark a shopping item as bought |
 | `/clearshop` | Remove all bought items |
 | `/calendar` | View upcoming calendar events |
+| `/find <keywords>` | Search for a file on your MacBook |
+| `/notion` | Force sync tasks/shopping/ideas to Notion |
+| `/myid` | Show your Telegram user ID |
 
 ---
 
@@ -146,8 +179,25 @@ You don't need to use commands — just talk naturally:
 > *"What do we have to do this week?"*
 → Summarises pending tasks and upcoming events
 
-> *"Add pay electricity bill to our tasks"*
-→ Adds it to the shared task list
+> *"I have an idea for a blog post about AI productivity"*
+→ Saves it to the Ideas database in Notion
+
+> *"Mark all pending tasks as done"*
+→ Marks everything completed
+
+---
+
+## Morning Digest
+
+Every day at **7:00 AM IST**, Mira sends a digest covering:
+
+- ✅ Pending tasks
+- 🛒 Shopping list
+- 💡 Recent ideas
+- 📈 Live market indices with % change:
+  - S&P 500, Dow Jones, NASDAQ
+  - Nifty 50, Sensex
+  - Gold, Silver
 
 ---
 
@@ -155,9 +205,7 @@ You don't need to use commands — just talk naturally:
 
 1. Create a Telegram group with you, your partner, and the bot
 2. Send `/start` in the group
-3. Both of you can now chat with the bot together
-
-The bot is smart about group chats — it only responds when addressed or when it detects relevant keywords (remind, shopping, calendar, schedule, etc.), so it won't interrupt every message between you.
+3. Both of you can now chat with Mira together
 
 ---
 
@@ -169,6 +217,8 @@ The bot is smart about group chats — it only responds when addressed or when i
 | Anthropic (Claude) | ~$2–5/month for typical family use |
 | Google Calendar API | Free |
 | Whisper (voice) | Free (runs locally) |
+| Notion API | Free |
+| yfinance (market data) | Free |
 | Hosting (your Mac) | Free (runs locally) |
 
 For 24/7 uptime without keeping your Mac on, deploy to [Railway](https://railway.app) (~$5/month).
@@ -178,7 +228,7 @@ For 24/7 uptime without keeping your Mac on, deploy to [Railway](https://railway
 ## Roadmap
 
 - [ ] Gmail integration (summarise emails, draft replies)
-- [ ] Weekly digest every Monday morning
+- [ ] Weekly summary every Monday morning
 - [ ] Finance & budget tracking
 - [ ] Deploy to Railway for 24/7 uptime
 - [ ] Wife's Google Calendar sync
@@ -191,6 +241,8 @@ For 24/7 uptime without keeping your Mac on, deploy to [Railway](https://railway
 - [python-telegram-bot](https://python-telegram-bot.org) — Telegram integration
 - [OpenAI Whisper](https://github.com/openai/whisper) — Voice transcription
 - [Google Calendar API](https://developers.google.com/calendar) — Calendar management
+- [Notion API](https://developers.notion.com) — Database and knowledge management
+- [yfinance](https://github.com/ranaroussi/yfinance) — Real-time market data
 - [Claude Code](https://claude.ai/code) — Used to build the entire project
 
 ---
