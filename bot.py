@@ -51,7 +51,50 @@ SHOPPING_FILE = "shopping.json"
 CONVERSATION_FILE = "conversation.json"
 CREDENTIALS_FILE = "credentials.json"
 TOKEN_FILE = "token.json"
+STATS_FILE = "daily_stats.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
+# Claude Sonnet 4.6 pricing (USD per million tokens)
+COST_INPUT_PER_MTK  = 3.00
+COST_OUTPUT_PER_MTK = 15.00
+
+# ── Daily stats tracking ──────────────────────────────────────────────────────
+
+def _today() -> str:
+    return datetime.now(IST).strftime("%Y-%m-%d")
+
+def load_stats() -> dict:
+    if os.path.exists(STATS_FILE):
+        with open(STATS_FILE) as f:
+            return json.load(f)
+    return {}
+
+def save_stats(stats: dict):
+    with open(STATS_FILE, "w") as f:
+        json.dump(stats, f, indent=2)
+
+def get_today_stats() -> dict:
+    stats = load_stats()
+    today = _today()
+    if today not in stats:
+        stats[today] = {
+            "messages": 0, "voice_messages": 0,
+            "input_tokens": 0, "output_tokens": 0,
+            "tasks_added": 0, "shopping_added": 0,
+            "ideas_added": 0, "calendar_events": 0,
+            "errors": 0
+        }
+        save_stats(stats)
+    return stats[today]
+
+def increment_stat(key: str, amount: int = 1):
+    stats = load_stats()
+    today = _today()
+    if today not in stats:
+        get_today_stats()
+        stats = load_stats()
+    stats[today][key] = stats[today].get(key, 0) + amount
+    save_stats(stats)
 
 # ── Google Calendar ──────────────────────────────────────────────────────────
 
@@ -565,6 +608,63 @@ async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     await update.message.reply_text(f"👤 *{name}*, your Telegram user ID is:\n`{uid}`\n\nShare this with Abhishek to get added to Mira's allowlist.", parse_mode="Markdown")
 
+async def costreport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
+
+    today = _today()
+    s = get_today_stats()
+
+    input_cost  = (s.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
+    output_cost = (s.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
+    total_cost  = input_cost + output_cost
+
+    msg = (
+        f"💰 *Mira Cost Report — {today}*\n\n"
+        f"*Claude API Usage*\n"
+        f"  Input tokens:   `{s.get('input_tokens', 0):,}`\n"
+        f"  Output tokens:  `{s.get('output_tokens', 0):,}`\n"
+        f"  Input cost:     `${input_cost:.4f}`\n"
+        f"  Output cost:    `${output_cost:.4f}`\n"
+        f"  ─────────────────────\n"
+        f"  *Total today:*  `${total_cost:.4f}`\n\n"
+        f"*Model:* claude-sonnet-4-6\n"
+        f"*Pricing:* $3 / 1M input · $15 / 1M output"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
+        return
+
+    today = _today()
+    s = get_today_stats()
+
+    errors = s.get("errors", 0)
+    health = "🟢 Healthy" if errors == 0 else ("🟡 Minor issues" if errors <= 2 else "🔴 Needs attention")
+
+    msg = (
+        f"📊 *Mira Eval Report — {today}*\n\n"
+        f"*Status:* {health}\n\n"
+        f"*Activity*\n"
+        f"  💬 Messages handled:    `{s.get('messages', 0)}`\n"
+        f"  🎙️ Voice messages:       `{s.get('voice_messages', 0)}`\n\n"
+        f"*Actions taken*\n"
+        f"  ✅ Tasks added:          `{s.get('tasks_added', 0)}`\n"
+        f"  🛒 Shopping items added: `{s.get('shopping_added', 0)}`\n"
+        f"  💡 Ideas saved:          `{s.get('ideas_added', 0)}`\n"
+        f"  📅 Calendar events:      `{s.get('calendar_events', 0)}`\n\n"
+        f"*Errors:* `{errors}`\n"
+    )
+    if errors > 0:
+        msg += f"\n⚠️ {errors} error(s) occurred today. Check `mira.log` for details."
+    else:
+        msg += "\n✨ No errors today — Mira is running perfectly!"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
@@ -662,6 +762,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tasks = load_tasks()
     tasks.append({"text": task_text, "done": False, "added_by": user_name, "date": datetime.now().isoformat()})
     save_tasks(tasks)
+    increment_stat("tasks_added")
     await update.message.reply_text(f"✅ Added: *{task_text}*", parse_mode="Markdown")
 
 async def shopping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -747,12 +848,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await update.message.reply_text(f"📝 I heard: _{transcription}_", parse_mode="Markdown")
+        increment_stat("voice_messages")
 
         # Process transcription through the main handler
         await process_text_message(update, context, transcription)
 
     except Exception as e:
         logging.error(f"Voice error: {e}")
+        increment_stat("errors")
         await update.message.reply_text("⚠️ Couldn't process the voice message. Please try again.")
 
 # ── Main message handler ──────────────────────────────────────────────────────
@@ -829,6 +932,12 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     reply = response.content[0].text
     logging.info(f"Claude reply: {reply[:200]}")
 
+    # Track token usage
+    increment_stat("messages")
+    if hasattr(response, "usage") and response.usage:
+        increment_stat("input_tokens",  response.usage.input_tokens)
+        increment_stat("output_tokens", response.usage.output_tokens)
+
     conversation.append({"role": "assistant", "content": reply})
     save_conversation(conversation)
 
@@ -869,9 +978,11 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     shopping.append({"name": item, "bought": False, "added_by": user_name, "date": datetime.now().isoformat()})
                     added.append(item)
                     notion_add_shopping(item, user_name)
+                    increment_stat("shopping_added")
             save_shopping(shopping)
         except Exception as e:
             logging.error(f"Shopping error: {e}")
+            increment_stat("errors")
 
     # Check if Claude wants to create a calendar event
     calendar_match = re.search(r"<calendar>(.*?)</calendar>", reply, re.DOTALL)
@@ -1003,8 +1114,10 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 ideas.append({"text": title, "type": idea_type, "added_by": user_name, "date": datetime.now().isoformat()})
                 save_ideas(ideas)
                 notion_add_idea(title, idea_type, user_name)
+                increment_stat("ideas_added")
         except Exception as e:
             logging.error(f"Idea capture error: {e}")
+            increment_stat("errors")
 
     clean_reply = re.sub(r"<idea>.*?</idea>", "", reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<shopping>.*?</shopping>", "", clean_reply, flags=re.DOTALL)
@@ -1027,8 +1140,10 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
             start_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
             link = create_calendar_event(title, start_dt, description=description)
             clean_reply += f"\n\n📅 *Calendar event created:* [{title}]({link})"
+            increment_stat("calendar_events")
         except Exception as e:
             logging.error(f"Calendar error: {e}")
+            increment_stat("errors")
             clean_reply += "\n\n⚠️ Couldn't create the calendar event. Try /calendar to check."
 
     # Auto-save tasks mentioned in message (skip if it's a shopping message)
@@ -1042,6 +1157,7 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 tasks.append({"text": line, "done": False, "added_by": user_name,
                                "date": datetime.now().isoformat()})
                 notion_add_task(line, user_name)
+                increment_stat("tasks_added")
         save_tasks(tasks)
 
     if clean_reply:
@@ -1150,18 +1266,20 @@ def background_notion_sync():
 
 async def post_init(app):
     await app.bot.set_my_commands([
-        ("digest",    "Morning digest: tasks, shopping, ideas & markets"),
-        ("tasks",     "Show all pending tasks"),
-        ("add",       "Add a task — /add Buy groceries"),
-        ("done",      "Mark a task done — /done 1"),
-        ("clear",     "Clear all completed tasks"),
-        ("shopping",  "Show shopping list"),
-        ("bought",    "Mark item bought — /bought 1"),
-        ("clearshop", "Clear all bought items from shopping list"),
-        ("calendar",  "Show upcoming calendar events"),
-        ("find",      "Search a file on MacBook — /find filename"),
-        ("notion",    "Force sync to Notion"),
-        ("myid",      "Show your Telegram user ID"),
+        ("digest",     "Morning digest: tasks, shopping, ideas & markets"),
+        ("tasks",      "Show all pending tasks"),
+        ("add",        "Add a task — /add Buy groceries"),
+        ("done",       "Mark a task done — /done 1"),
+        ("clear",      "Clear all completed tasks"),
+        ("shopping",   "Show shopping list"),
+        ("bought",     "Mark item bought — /bought 1"),
+        ("clearshop",  "Clear all bought items from shopping list"),
+        ("calendar",   "Show upcoming calendar events"),
+        ("find",       "Search a file on MacBook — /find filename"),
+        ("costreport", "Today's Claude API cost and token usage"),
+        ("eval",       "Today's Mira activity report and health check"),
+        ("notion",     "Force sync to Notion"),
+        ("myid",       "Show your Telegram user ID"),
     ])
 
 def main():
@@ -1186,9 +1304,11 @@ def main():
     app.add_handler(CommandHandler("done",     done_command))
     app.add_handler(CommandHandler("clear",    clear_command))
     app.add_handler(CommandHandler("add",       add_command))
-    app.add_handler(CommandHandler("shopping",  shopping_command))
-    app.add_handler(CommandHandler("bought",    bought_command))
-    app.add_handler(CommandHandler("clearshop", clearshop_command))
+    app.add_handler(CommandHandler("shopping",    shopping_command))
+    app.add_handler(CommandHandler("bought",      bought_command))
+    app.add_handler(CommandHandler("clearshop",   clearshop_command))
+    app.add_handler(CommandHandler("costreport",  costreport_command))
+    app.add_handler(CommandHandler("eval",        eval_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
