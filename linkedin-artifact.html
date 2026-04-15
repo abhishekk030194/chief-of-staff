@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mira — AI Family Assistant</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #080810;
+    color: #ffffff;
+    min-height: 100vh;
+    padding: 60px 20px;
+  }
+
+  .container { max-width: 860px; margin: 0 auto; }
+
+  /* ── Hero ── */
+  .hero {
+    text-align: center;
+    margin-bottom: 64px;
+    position: relative;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: 50%;
+    transform: translateX(-50%);
+    width: 600px; height: 400px;
+    background: radial-gradient(ellipse, rgba(124,58,237,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(124,58,237,0.15);
+    border: 1px solid rgba(124,58,237,0.3);
+    color: #a78bfa;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 8px 18px;
+    border-radius: 30px;
+    margin-bottom: 24px;
+  }
+
+  .hero h1 {
+    font-size: 56px;
+    font-weight: 900;
+    line-height: 1.05;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 50%, #818cf8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero .subtitle {
+    font-size: 19px;
+    color: #9ca3af;
+    max-width: 580px;
+    margin: 0 auto 32px;
+    line-height: 1.65;
+  }
+
+  .hero-tags {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .hero-tag {
+    background: #111118;
+    border: 1px solid #22223a;
+    color: #818cf8;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 15px;
+    border-radius: 30px;
+  }
+
+  /* ── Stats ── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 48px;
+  }
+
+  .stat {
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 18px;
+    padding: 24px 16px;
+    text-align: center;
+  }
+
+  .stat-num {
+    font-size: 34px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a78bfa, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .stat-lbl {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 500;
+  }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, #1a1a2e, transparent);
+    margin: 48px 0;
+  }
+
+  /* ── Section label ── */
+  .label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: #7c3aed;
+    margin-bottom: 20px;
+  }
+
+  /* ── Card ── */
+  .card {
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 16px;
+  }
+
+  .card h3 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #f3f4f6;
+  }
+
+  .card p {
+    color: #9ca3af;
+    line-height: 1.75;
+    font-size: 15px;
+  }
+
+  /* ── Story timeline ── */
+  .timeline { padding-left: 28px; position: relative; }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 6px; top: 8px; bottom: 8px;
+    width: 2px;
+    background: linear-gradient(to bottom, #7c3aed, #4f46e5, transparent);
+  }
+
+  .titem { position: relative; margin-bottom: 32px; }
+
+  .titem::before {
+    content: '';
+    position: absolute;
+    left: -24px; top: 5px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+    border: 2px solid #080810;
+  }
+
+  .titem h4 { font-size: 16px; font-weight: 600; color: #e5e7eb; margin-bottom: 6px; }
+  .titem p  { font-size: 14px; color: #6b7280; line-height: 1.6; }
+
+  /* ── Feature grid ── */
+  .feat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .feat {
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 18px;
+    padding: 24px;
+    transition: border-color 0.2s;
+  }
+
+  .feat:hover { border-color: #3b0764; }
+
+  .feat-icon { font-size: 30px; margin-bottom: 14px; }
+  .feat h4   { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #f3f4f6; }
+  .feat p    { font-size: 13px; color: #6b7280; line-height: 1.55; }
+
+  /* ── Architecture ── */
+  .arch {
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 20px;
+    padding: 32px;
+  }
+
+  .arch-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .arch-box {
+    background: #13132a;
+    border: 1px solid #2d2d5e;
+    border-radius: 12px;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #c4b5fd;
+    white-space: nowrap;
+  }
+
+  .arch-arrow { color: #4b5563; font-size: 18px; }
+
+  /* ── Chat demo ── */
+  .chat-wrap {
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 20px;
+    overflow: hidden;
+  }
+
+  .chat-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 24px;
+    border-bottom: 1px solid #1a1a2e;
+    background: #0b0b18;
+  }
+
+  .chat-ava {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+
+  .chat-name  { font-weight: 600; font-size: 15px; }
+  .chat-green { font-size: 12px; color: #10b981; margin-top: 2px; }
+
+  .chat-body { padding: 24px; }
+
+  .msg { display: flex; gap: 10px; margin-bottom: 18px; }
+  .msg.right { flex-direction: row-reverse; }
+
+  .msg-ava {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: #1a1a2e;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+  }
+
+  .bubble {
+    max-width: 78%;
+    padding: 12px 16px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .msg.left  .bubble { background: #13132a; border: 1px solid #2d2d5e; color: #e5e7eb; border-top-left-radius: 4px; }
+  .msg.right .bubble { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; border-top-right-radius: 4px; }
+
+  .name-tag { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+  .msg.right .name-tag { text-align: right; }
+
+  /* ── Stack pills ── */
+  .pills { display: flex; flex-wrap: wrap; gap: 10px; }
+
+  .pill {
+    display: flex; align-items: center; gap: 8px;
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 30px;
+    padding: 10px 18px;
+    font-size: 13px; font-weight: 500; color: #c4b5fd;
+  }
+
+  .pill-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #7c3aed;
+  }
+
+  /* ── Cost table ── */
+  .cost-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .cost-card {
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 18px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .cost-service { font-size: 13px; color: #9ca3af; margin-bottom: 8px; }
+  .cost-price { font-size: 22px; font-weight: 700; color: #a78bfa; }
+  .cost-period { font-size: 11px; color: #4b5563; margin-top: 4px; }
+
+  /* ── Roadmap ── */
+  .roadmap { display: flex; flex-direction: column; gap: 12px; }
+
+  .road-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 14px;
+    padding: 16px 20px;
+  }
+
+  .road-icon { font-size: 20px; width: 36px; text-align: center; }
+  .road-text { font-size: 14px; color: #d1d5db; font-weight: 500; }
+  .road-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+  .done-tag    { background: rgba(16,185,129,0.15); color: #10b981; }
+  .next-tag    { background: rgba(124,58,237,0.15); color: #a78bfa; }
+
+  /* ── Key quote ── */
+  .quote {
+    background: linear-gradient(135deg, #0e0e1a, #13132a);
+    border: 1px solid #2d2d5e;
+    border-left: 4px solid #7c3aed;
+    border-radius: 0 20px 20px 0;
+    padding: 32px;
+    margin-bottom: 16px;
+  }
+
+  .quote p {
+    font-size: 18px;
+    font-weight: 500;
+    color: #e5e7eb;
+    line-height: 1.7;
+    font-style: italic;
+  }
+
+  .quote .author { margin-top: 12px; font-size: 13px; color: #6b7280; font-style: normal; }
+
+  /* ── CTA ── */
+  .cta {
+    text-align: center;
+    background: linear-gradient(135deg, #0e0e1a, #13132a);
+    border: 1px solid #2d2d5e;
+    border-radius: 24px;
+    padding: 48px 32px;
+    margin-bottom: 48px;
+  }
+
+  .cta h3 { font-size: 26px; font-weight: 700; margin-bottom: 12px; }
+  .cta p  { color: #9ca3af; font-size: 15px; margin-bottom: 24px; line-height: 1.6; }
+
+  .cta-link {
+    display: inline-block;
+    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+    color: white;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 14px 28px;
+    border-radius: 30px;
+    text-decoration: none;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    color: #374151;
+    font-size: 13px;
+    padding-top: 32px;
+    border-top: 1px solid #1a1a2e;
+  }
+
+  .footer span { color: #7c3aed; font-weight: 600; }
+
+  /* ── Section spacing ── */
+  .section { margin-bottom: 48px; }
+
+  /* ── Digest preview ── */
+  .digest-box {
+    background: #0b0b18;
+    border: 1px solid #2d2d5e;
+    border-radius: 16px;
+    padding: 24px;
+    font-size: 13px;
+    color: #c4b5fd;
+    line-height: 2;
+    font-family: monospace;
+  }
+  .digest-box .d-head { color: #a78bfa; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .digest-box .d-section { color: #6b7280; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 14px; margin-bottom: 4px; }
+  .digest-box .green { color: #10b981; }
+  .digest-box .red   { color: #f87171; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="badge">🤖 Personal AI Project · April 2026</div>
+    <h1>Meet Mira — My Family's AI Assistant</h1>
+    <p class="subtitle">A personal AI agent that manages tasks, calendar, shopping, ideas, Notion, and live market data for me and my wife — built with zero coding experience using Claude Code.</p>
+    <div class="hero-tags">
+      <span class="hero-tag">Claude AI</span>
+      <span class="hero-tag">Telegram</span>
+      <span class="hero-tag">Google Calendar</span>
+      <span class="hero-tag">Notion</span>
+      <span class="hero-tag">Voice Recognition</span>
+      <span class="hero-tag">Live Market Data</span>
+      <span class="hero-tag">Python</span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat"><div class="stat-num">1</div><div class="stat-lbl">Evening to build</div></div>
+    <div class="stat"><div class="stat-num">0</div><div class="stat-lbl">Lines written by hand</div></div>
+    <div class="stat"><div class="stat-num">~$3</div><div class="stat-lbl">Monthly running cost</div></div>
+    <div class="stat"><div class="stat-num">12</div><div class="stat-lbl">Features shipped</div></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Problem -->
+  <div class="section">
+    <div class="label">The Problem</div>
+    <div class="card">
+      <h3>Life is chaotic. We needed a shared brain.</h3>
+      <p>Between managing work, household tasks, shopping, and keeping each other in the loop — things kept falling through the cracks. Tasks lived in one app, the shopping list in another, market updates in a third browser tab, ideas scattered in notes. I wanted a single intelligent assistant that both of us could talk to naturally and that actually took action — not another app to maintain.</p>
+    </div>
+  </div>
+
+  <!-- How built -->
+  <div class="section">
+    <div class="label">How We Built It</div>
+    <div class="card">
+      <div class="timeline">
+        <div class="titem">
+          <h4>Started with a conversation, not a spec</h4>
+          <p>No wireframes, no technical planning. Just described what I wanted to Claude Code: "I want an AI assistant for me and my wife that handles tasks, scheduling, shopping, and household management."</p>
+        </div>
+        <div class="titem">
+          <h4>Picked the right interface: Telegram</h4>
+          <p>Chose Telegram because it works on both our iPhones, has an excellent bot API, supports voice messages, and feels like a natural chat — not another productivity app.</p>
+        </div>
+        <div class="titem">
+          <h4>Claude Code wrote the entire bot</h4>
+          <p>Using Claude Code, the complete bot was built — Telegram integration, Claude AI calls, task management, conversation memory, group chat, and Google Calendar. No manual coding needed.</p>
+        </div>
+        <div class="titem">
+          <h4>Added voice, Notion, and smart digests</h4>
+          <p>Iterated quickly — added OpenAI Whisper for voice, Google Calendar for iPhone reminders, Notion as a live database, and a daily 7 AM digest with real-time stock market indices.</p>
+        </div>
+        <div class="titem">
+          <h4>Polished and open-sourced</h4>
+          <p>Added security (only family members can use it), command autocomplete, IST timestamps, file search, and ideas capture. Code is open-source on GitHub.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="section">
+    <div class="label">What Mira Can Do</div>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="feat-icon">📋</div>
+        <h4>Shared Task Management</h4>
+        <p>Both of us can add, view, and complete tasks. Tracks who added what and syncs to Notion automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📅</div>
+        <h4>Google Calendar Events</h4>
+        <p>Say "remind me at 4:30am Sunday for my marathon" — it creates the event with alerts straight to your iPhone.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🎙️</div>
+        <h4>Voice Messages</h4>
+        <p>Send a voice note in Telegram. Whisper transcribes it, Claude understands it, and action is taken automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🛒</div>
+        <h4>Smart Shopping List</h4>
+        <p>Say "add milk, eggs and bread" — items appear on the shared list and sync to Notion instantly.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">💡</div>
+        <h4>Ideas Capture</h4>
+        <p>Save blog ideas, AI product concepts, and more. Mira auto-tags each idea by type and stores it in Notion.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📈</div>
+        <h4>Live Market Digest</h4>
+        <p>Every morning at 7 AM IST, get real-time prices and % change for S&P 500, NASDAQ, Nifty 50, Sensex, Gold, and Silver.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🗃️</div>
+        <h4>Notion Sync</h4>
+        <p>All tasks, shopping items, and ideas auto-sync to Notion databases in real time — accessible anywhere.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🔍</div>
+        <h4>MacBook File Search</h4>
+        <p>Ask Mira to find any file on your MacBook. It searches and returns the path directly in chat.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🧠</div>
+        <h4>Context Memory</h4>
+        <p>Remembers recent conversations so follow-up questions feel natural. Knows who's talking and responds accordingly.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">⌨️</div>
+        <h4>Command Autocomplete</h4>
+        <p>Type / in Telegram to see all 12 commands with descriptions instantly — no need to remember syntax.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🔐</div>
+        <h4>Family-Only Security</h4>
+        <p>Only authorised Telegram users can interact with Mira. Everyone else is silently ignored.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">👥</div>
+        <h4>Family Group Chat</h4>
+        <p>Works in a shared Telegram group. Doesn't interrupt every message — only responds when relevant.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Morning Digest -->
+  <div class="section">
+    <div class="label">Morning Digest — Every Day at 7 AM IST</div>
+    <div class="digest-box">
+      <div class="d-head">☀️ Good morning! Here's your daily briefing.</div>
+
+      <div class="d-section">✅ Pending Tasks</div>
+      • Book dentist appointment — Abhishek<br>
+      • Pay electricity bill — Alekya<br>
+
+      <div class="d-section">🛒 Shopping List</div>
+      • Milk &nbsp;• Eggs &nbsp;• Olive oil<br>
+
+      <div class="d-section">💡 Recent Ideas</div>
+      • [Blog Idea] AI tools for non-coders<br>
+      • [AI Product] Smart home assistant for Indian households<br>
+
+      <div class="d-section">📈 Markets</div>
+      <span class="green">🇺🇸 S&P 500: 7,022.95  ▲ +0.80%</span><br>
+      <span class="red">🇺🇸 Dow Jones: 48,463.72  ▼ -0.15%</span><br>
+      <span class="green">🇺🇸 NASDAQ: 24,016.02  ▲ +1.59%</span><br>
+      <span class="green">🇮🇳 Nifty 50: 24,231.30  ▲ +1.73%</span><br>
+      <span class="green">🇮🇳 Sensex: 78,111.24  ▲ +1.64%</span><br>
+      <span class="red">🥇 Gold: 4,810.70  ▼ -0.80%</span><br>
+      <span class="red">🥈 Silver: 79.07  ▼ -1.07%</span>
+    </div>
+  </div>
+
+  <!-- Chat demo -->
+  <div class="section">
+    <div class="label">See It In Action</div>
+    <div class="chat-wrap">
+      <div class="chat-top">
+        <div class="chat-ava">🤖</div>
+        <div>
+          <div class="chat-name">Mira · Family HQ</div>
+          <div class="chat-green">● 3 members · online</div>
+        </div>
+      </div>
+      <div class="chat-body">
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Abhishek</div>
+            <div class="bubble">We need to call the dentist, pay electricity bill, and buy groceries this week</div>
+          </div>
+          <div class="msg-ava">👨</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">Got it! Added 3 tasks and synced to Notion:<br><br>⬜ Call the dentist<br>⬜ Pay electricity bill<br>⬜ Buy groceries<br><br>Want reminders set for any of these?</div>
+          </div>
+        </div>
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Alekya</div>
+            <div class="bubble">🎙️ <em>Voice message: "Add milk, eggs, bread and olive oil to shopping"</em></div>
+          </div>
+          <div class="msg-ava">👩</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">📝 Heard: <em>"Add milk, eggs, bread and olive oil to shopping"</em><br><br>🛒 Added to shopping list + Notion!<br>• Milk &nbsp;• Eggs &nbsp;• Bread &nbsp;• Olive oil</div>
+          </div>
+        </div>
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Abhishek</div>
+            <div class="bubble">I have an idea — an AI tool that helps non-coders build their own personal tools</div>
+          </div>
+          <div class="msg-ava">👨</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">💡 Saved to your Ideas database in Notion!<br><br><strong>[AI Product]</strong> AI tool that helps non-coders build personal tools<br><br>Great idea — want me to add any notes to it?</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Architecture -->
+  <div class="section">
+    <div class="label">How It Works</div>
+    <div class="arch">
+      <div class="arch-row">
+        <div class="arch-box">🎙️ Voice / Text</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box">📱 Telegram</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box">🐍 Python Bot</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-box">🤖 Claude AI</div>
+      </div>
+      <div class="arch-row" style="padding-left: 160px;">
+        <div class="arch-arrow">↓</div>
+      </div>
+      <div class="arch-row" style="padding-left: 20px; gap: 10px;">
+        <div class="arch-box">📅 Google Calendar</div>
+        <div class="arch-box">🗃️ Notion</div>
+        <div class="arch-box">📋 Tasks</div>
+        <div class="arch-box">🛒 Shopping</div>
+        <div class="arch-box">📈 yfinance</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stack -->
+  <div class="section">
+    <div class="label">Tech Stack</div>
+    <div class="card">
+      <div class="pills">
+        <div class="pill"><div class="pill-dot"></div>Claude Sonnet 4.6 (Anthropic)</div>
+        <div class="pill"><div class="pill-dot"></div>Python 3</div>
+        <div class="pill"><div class="pill-dot"></div>Telegram Bot API</div>
+        <div class="pill"><div class="pill-dot"></div>OpenAI Whisper</div>
+        <div class="pill"><div class="pill-dot"></div>Google Calendar API</div>
+        <div class="pill"><div class="pill-dot"></div>Notion API</div>
+        <div class="pill"><div class="pill-dot"></div>yfinance (live markets)</div>
+        <div class="pill"><div class="pill-dot"></div>APScheduler</div>
+        <div class="pill"><div class="pill-dot"></div>Claude Code</div>
+        <div class="pill"><div class="pill-dot"></div>ffmpeg</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cost -->
+  <div class="section">
+    <div class="label">Monthly Cost</div>
+    <div class="cost-grid">
+      <div class="cost-card">
+        <div class="cost-service">Telegram + Notion + yfinance</div>
+        <div class="cost-price">Free</div>
+        <div class="cost-period">forever</div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-service">Claude API</div>
+        <div class="cost-price">~$3</div>
+        <div class="cost-period">per month (light use)</div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-service">Google Calendar + Whisper</div>
+        <div class="cost-price">Free</div>
+        <div class="cost-period">both free tiers</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Roadmap -->
+  <div class="section">
+    <div class="label">Roadmap</div>
+    <div class="roadmap">
+      <div class="road-item"><div class="road-icon">📋</div><div class="road-text">Shared task management with Notion sync</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">📅</div><div class="road-text">Google Calendar integration with iPhone reminders</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🎙️</div><div class="road-text">Voice message support via Whisper</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🛒</div><div class="road-text">Smart shopping list with Notion sync</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">💡</div><div class="road-text">Ideas capture with auto-tagging to Notion</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">📈</div><div class="road-text">Live market digest — indices, gold, silver at 7 AM IST</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🔍</div><div class="road-text">MacBook file search from Telegram</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">⌨️</div><div class="road-text">Telegram command autocomplete with descriptions</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">☁️</div><div class="road-text">Deploy to Railway for 24/7 uptime</div><div class="road-status next-tag">Next</div></div>
+      <div class="road-item"><div class="road-icon">📧</div><div class="road-text">Gmail integration — summarise and draft emails</div><div class="road-status next-tag">Planned</div></div>
+      <div class="road-item"><div class="road-icon">💰</div><div class="road-text">Finance & budget tracking</div><div class="road-status next-tag">Planned</div></div>
+    </div>
+  </div>
+
+  <!-- Quote -->
+  <div class="quote">
+    <p>"You don't need to know how to code to build powerful AI tools anymore. With the right assistant, you can go from idea to a fully working product in a single evening. The barrier to building personal software has never been lower."</p>
+    <div class="author">— Abhishek, built with Claude Code · April 2026</div>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta">
+    <h3>Open Source on GitHub</h3>
+    <p>The full code is available. Clone it, customise it, and build your own Mira.<br>All you need is a Telegram account, an Anthropic API key, and an evening.</p>
+    <a class="cta-link" href="https://github.com/abhishekk030194/chief-of-staff" target="_blank">View on GitHub →</a>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Built by <span>Abhishek</span> using <span>Claude Code</span> · April 2026
+  </div>
+
+</div>
+</body>
+</html>
