@@ -1,10 +1,15 @@
 import os
 import json
 import logging
+import logging.handlers
 import re
+import signal
+import sys
 import tempfile
+import time
 import fnmatch
 import urllib.request
+import urllib.error
 import feedparser
 import pytz
 from datetime import datetime, timedelta
@@ -19,7 +24,24 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-logging.basicConfig(level=logging.INFO)
+# ── Structured JSON logging ───────────────────────────────────────────────────
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        return json.dumps({
+            "time":    datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S IST"),
+            "level":   record.levelname,
+            "message": record.getMessage(),
+        })
+
+_log_handler = logging.handlers.RotatingFileHandler(
+    "mira.log", maxBytes=2 * 1024 * 1024, backupCount=3  # 2MB, keep 3 files
+)
+_log_handler.setFormatter(JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler, logging.StreamHandler()])
+
+# ── Uptime tracking ───────────────────────────────────────────────────────────
+BOT_START_TIME = datetime.now(pytz.timezone("Asia/Kolkata"))
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -111,6 +133,21 @@ def increment_stat(key: str, amount: int = 1):
         stats = load_stats()
     stats[today][key] = stats[today].get(key, 0) + amount
     save_stats(stats)
+
+# ── Retry logic ──────────────────────────────────────────────────────────────
+
+def with_retry(fn, retries=3, delay=2, label="operation"):
+    """Call fn up to `retries` times with exponential backoff. Returns result or None."""
+    for attempt in range(1, retries + 1):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt == retries:
+                logging.error(f"[RETRY] {label} failed after {retries} attempts: {e}")
+                return None
+            wait = delay * attempt
+            logging.warning(f"[RETRY] {label} attempt {attempt} failed ({e}), retrying in {wait}s...")
+            time.sleep(wait)
 
 # ── Security ─────────────────────────────────────────────────────────────────
 
@@ -555,13 +592,18 @@ def sync_shopping_to_notion(items: list, added_by: str):
 # ── Notion helpers ────────────────────────────────────────────────────────────
 
 def _notion_request(url, payload, method="POST"):
-    body = json.dumps(payload).encode() if payload and method != "GET" else None
-    headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": "2022-06-28"}
-    if body:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())
+    def _do():
+        body = json.dumps(payload).encode() if payload and method != "GET" else None
+        headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": "2022-06-28"}
+        if body:
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+    result = with_retry(_do, retries=3, delay=2, label=f"Notion {method} {url[-40:]}")
+    if result is None:
+        raise Exception(f"Notion request failed after retries: {url}")
+    return result
 
 def _get_notion_parent_page_id():
     """Return the parent page id shared by the existing Notion databases."""
@@ -1007,6 +1049,64 @@ async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
     notion_upsert_eval(s, today)
 
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await block_unauthorised(update, context): return
+
+    await update.message.reply_text("🔍 Checking all systems...", parse_mode="Markdown")
+
+    # Uptime
+    now      = datetime.now(IST)
+    delta    = now - BOT_START_TIME
+    hours, remainder = divmod(int(delta.total_seconds()), 3600)
+    minutes  = remainder // 60
+    uptime   = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+    # Check each integration live
+    checks = {}
+
+    try:
+        client.messages.create(model="claude-sonnet-4-6", max_tokens=5,
+                               messages=[{"role": "user", "content": "hi"}])
+        checks["Claude API"] = "🟢 OK"
+    except Exception as e:
+        checks["Claude API"] = f"🔴 FAIL"
+
+    try:
+        if notion and NOTION_TASKS_DB:
+            notion.databases.retrieve(NOTION_TASKS_DB)
+        checks["Notion"] = "🟢 OK"
+    except Exception:
+        checks["Notion"] = "🔴 FAIL"
+
+    try:
+        get_calendar_service()
+        checks["Google Calendar"] = "🟢 OK"
+    except Exception:
+        checks["Google Calendar"] = "🔴 FAIL"
+
+    checks["Telegram"] = "🟢 OK"  # we're responding so it's working
+
+    # Today's stats
+    s = get_today_stats()
+    errors = s.get("errors", 0)
+    overall = "🟢 All systems operational" if all("OK" in v for v in checks.values()) and errors == 0 \
+              else "🟡 Some issues detected" if errors <= 2 \
+              else "🔴 Needs attention"
+
+    msg = (
+        f"📡 *Mira Status Report*\n\n"
+        f"*Overall:* {overall}\n"
+        f"*Uptime:* `{uptime}` _(since last restart)_\n\n"
+        f"*Integrations*\n"
+        + "\n".join(f"  {v}  {k}" for k, v in checks.items()) +
+        f"\n\n*Today's Activity*\n"
+        f"  💬 Messages: `{s.get('messages', 0)}`\n"
+        f"  🎙️ Voice: `{s.get('voice_messages', 0)}`\n"
+        f"  ⚠️ Errors: `{errors}`\n\n"
+        f"_Checked at {now.strftime('%I:%M %p IST')}_"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await block_unauthorised(update, context): return
     save_chat_id(update.effective_chat.id)
@@ -1273,12 +1373,22 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     conversation = load_conversation()
     conversation.append({"role": "user", "content": f"{user_name}: {user_message}"})
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=system,
-        messages=conversation
+    response = with_retry(
+        lambda: client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system,
+            messages=conversation
+        ),
+        retries=3, delay=3, label="Claude API"
     )
+    if response is None:
+        await update.message.reply_text(
+            "⚠️ I'm having trouble reaching my brain right now. Please try again in a moment.",
+            parse_mode="Markdown"
+        )
+        increment_stat("errors")
+        return
     reply = response.content[0].text
 
     # ── Security layer 2: Secret leak scanner ──
@@ -1637,6 +1747,7 @@ async def post_init(app):
         ("find",       "Search a file on MacBook — /find filename"),
         ("costreport", "Today's Claude API cost and token usage"),
         ("eval",       "Today's Mira activity report and health check"),
+        ("status",     "Live status: uptime, integrations, today's activity"),
         ("notion",     "Force sync to Notion"),
         ("myid",       "Show your Telegram user ID"),
     ])
@@ -1672,9 +1783,23 @@ def main():
     app.add_handler(CommandHandler("clearshop",   clearshop_command))
     app.add_handler(CommandHandler("costreport",  costreport_command))
     app.add_handler(CommandHandler("eval",        eval_command))
+    app.add_handler(CommandHandler("status",      status_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
+
+    # ── Graceful shutdown ──
+    def _shutdown(signum, frame):
+        logging.info("[SHUTDOWN] Signal received — saving state and stopping Mira...")
+        try:
+            background_notion_sync()
+            logging.info("[SHUTDOWN] State synced to Notion. Goodbye.")
+        except Exception as e:
+            logging.error(f"[SHUTDOWN] Sync failed: {e}")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT,  _shutdown)
 
     print("🤖 Mira is running...")
     app.run_polling()
