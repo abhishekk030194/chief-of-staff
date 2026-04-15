@@ -52,7 +52,8 @@ CONVERSATION_FILE = "conversation.json"
 CREDENTIALS_FILE = "credentials.json"
 TOKEN_FILE = "token.json"
 STATS_FILE = "daily_stats.json"
-REPORTS_DB_FILE = "reports_db_id.txt"   # auto-saved after first creation
+COST_DB_FILE = "cost_db_id.txt"     # auto-saved after first creation
+EVAL_DB_FILE = "eval_db_id.txt"     # auto-saved after first creation
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 # Claude Sonnet 4.6 pricing (USD per million tokens)
@@ -394,10 +395,9 @@ def sync_shopping_to_notion(items: list, added_by: str):
         if item["name"].lower() not in existing and not item.get("bought"):
             notion_add_shopping(item["name"], added_by)
 
-# ── Notion Reports DB ────────────────────────────────────────────────────────
+# ── Notion helpers ────────────────────────────────────────────────────────────
 
 def _notion_request(url, payload, method="POST"):
-    """Helper to make a Notion API request and return parsed JSON."""
     body = json.dumps(payload).encode() if payload and method != "GET" else None
     headers = {"Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": "2022-06-28"}
     if body:
@@ -406,110 +406,132 @@ def _notion_request(url, payload, method="POST"):
     with urllib.request.urlopen(req) as resp:
         return json.loads(resp.read())
 
-def get_reports_db_id():
-    """Return the Notion Reports DB id, creating a parent page + database if needed."""
+def _get_notion_parent_page_id():
+    """Return the parent page id shared by the existing Notion databases."""
+    if not NOTION_TASKS_DB:
+        return None
+    meta = _notion_request(f"https://api.notion.com/v1/databases/{NOTION_TASKS_DB}", {}, method="GET")
+    return meta.get("parent", {}).get("page_id")
+
+def _get_or_create_db(cache_file: str, title: str, icon: str, properties: dict):
+    """Return a Notion DB id from cache, or create it alongside existing DBs."""
     if not notion:
         return None
-    # Return cached id if already created
-    if os.path.exists(REPORTS_DB_FILE):
-        with open(REPORTS_DB_FILE) as f:
+    if os.path.exists(cache_file):
+        with open(cache_file) as f:
             db_id = f.read().strip()
         if db_id:
             return db_id
     try:
-        # Find the parent page of the Tasks DB and create Reports DB alongside it
-        tasks_db_meta = _notion_request(
-            f"https://api.notion.com/v1/databases/{NOTION_TASKS_DB}",
-            {}, method="GET"
-        ) if NOTION_TASKS_DB else {}
-        parent_page_id = tasks_db_meta.get("parent", {}).get("page_id")
+        parent_page_id = _get_notion_parent_page_id()
         if not parent_page_id:
-            logging.error("Could not find parent page for Reports DB")
+            logging.error(f"Could not find parent page for {title}")
             return None
-
         db = _notion_request("https://api.notion.com/v1/databases", {
             "parent": {"type": "page_id", "page_id": parent_page_id},
-            "icon":   {"type": "emoji", "emoji": "📈"},
-            "title":  [{"type": "text", "text": {"content": "Mira Daily Reports"}}],
-            "properties": {
-                "Date":            {"title": {}},
-                "Chargeable Msgs": {"number": {"format": "number"}},
-                "Input Tokens":    {"number": {"format": "number"}},
-                "Output Tokens":   {"number": {"format": "number"}},
-                "Input Cost $":    {"number": {"format": "number"}},
-                "Output Cost $":   {"number": {"format": "number"}},
-                "Total Cost $":    {"number": {"format": "number"}},
-                "Voice Messages":  {"number": {"format": "number"}},
-                "Tasks Added":     {"number": {"format": "number"}},
-                "Shopping Added":  {"number": {"format": "number"}},
-                "Ideas Saved":     {"number": {"format": "number"}},
-                "Calendar Events": {"number": {"format": "number"}},
-                "Errors":          {"number": {"format": "number"}},
-                "Status":          {"select": {}},
-            }
+            "icon":   {"type": "emoji", "emoji": icon},
+            "title":  [{"type": "text", "text": {"content": title}}],
+            "properties": properties,
         })
         db_id = db["id"]
-        with open(REPORTS_DB_FILE, "w") as f:
+        with open(cache_file, "w") as f:
             f.write(db_id)
-        logging.info(f"Created Mira Reports DB: {db_id}")
+        logging.info(f"Created Notion DB '{title}': {db_id}")
         return db_id
     except Exception as e:
-        logging.error(f"Could not create Reports DB: {e}")
+        logging.error(f"Could not create Notion DB '{title}': {e}")
         return None
 
-def notion_upsert_report(s: dict, today: str):
-    """Create or update today's report row in the Notion Reports database."""
-    db_id = get_reports_db_id()
-    if not db_id:
-        return
-
-    input_cost  = (s.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
-    output_cost = (s.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
-    total_cost  = round(input_cost + output_cost, 6)
-    errors      = s.get("errors", 0)
-    status      = "Healthy" if errors == 0 else ("Minor issues" if errors <= 2 else "Needs attention")
-
-    props = {
-        "Date":            {"title": [{"text": {"content": today}}]},
-        "Chargeable Msgs": {"number": s.get("messages", 0)},
-        "Input Tokens":    {"number": s.get("input_tokens", 0)},
-        "Output Tokens":   {"number": s.get("output_tokens", 0)},
-        "Input Cost $":    {"number": round(input_cost, 6)},
-        "Output Cost $":   {"number": round(output_cost, 6)},
-        "Total Cost $":    {"number": total_cost},
-        "Voice Messages":  {"number": s.get("voice_messages", 0)},
-        "Tasks Added":     {"number": s.get("tasks_added", 0)},
-        "Shopping Added":  {"number": s.get("shopping_added", 0)},
-        "Ideas Saved":     {"number": s.get("ideas_added", 0)},
-        "Calendar Events": {"number": s.get("calendar_events", 0)},
-        "Errors":          {"number": errors},
-        "Status":          {"select": {"name": status}},
-    }
-
+def _notion_upsert(db_id: str, date_value: str, props: dict, label: str):
+    """Upsert a row keyed by Date title into a Notion database."""
     try:
-        # Check if a page for today already exists
         results = _notion_request(
             f"https://api.notion.com/v1/databases/{db_id}/query",
-            {"filter": {"property": "Date", "title": {"equals": today}}}
+            {"filter": {"property": "Date", "title": {"equals": date_value}}}
         ).get("results", [])
-
         if results:
-            # Update existing page
-            page_id = results[0]["id"]
-            _notion_request(
-                f"https://api.notion.com/v1/pages/{page_id}",
-                {"properties": props},
-                method="PATCH"
-            )
+            _notion_request(f"https://api.notion.com/v1/pages/{results[0]['id']}",
+                            {"properties": props}, method="PATCH")
         else:
-            # Create new page
-            _notion_request(
-                "https://api.notion.com/v1/pages",
-                {"parent": {"database_id": db_id}, "properties": props}
-            )
-        logging.info(f"Notion report upserted for {today}")
+            _notion_request("https://api.notion.com/v1/pages",
+                            {"parent": {"database_id": db_id}, "properties": props})
+        logging.info(f"Notion {label} upserted for {date_value}")
     except Exception as e:
-        logging.error(f"Notion report upsert error: {e}")
+        logging.error(f"Notion {label} upsert error: {e}")
+
+# ── Notion Cost Reports DB ────────────────────────────────────────────────────
+
+def get_cost_db_id():
+    return _get_or_create_db(
+        COST_DB_FILE, "💰 Mira Cost Reports", "💰",
+        {
+            "Date":                {"title": {}},
+            "Chargeable Messages": {"number": {"format": "number"}},
+            "Input Tokens":        {"number": {"format": "number"}},
+            "Output Tokens":       {"number": {"format": "number"}},
+            "Input Cost ($)":      {"number": {"format": "dollar"}},
+            "Output Cost ($)":     {"number": {"format": "dollar"}},
+            "Total Cost ($)":      {"number": {"format": "dollar"}},
+            "Avg Cost/Day ($)":    {"number": {"format": "dollar"}},
+            "Projected Month ($)": {"number": {"format": "dollar"}},
+            "Month":               {"rich_text": {}},
+        }
+    )
+
+def notion_upsert_cost(s: dict, today: str, avg_per_day: float, projected: float, month_label: str):
+    db_id = get_cost_db_id()
+    if not db_id:
+        return
+    input_cost  = (s.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
+    output_cost = (s.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
+    _notion_upsert(db_id, today, {
+        "Date":                {"title": [{"text": {"content": today}}]},
+        "Chargeable Messages": {"number": s.get("messages", 0)},
+        "Input Tokens":        {"number": s.get("input_tokens", 0)},
+        "Output Tokens":       {"number": s.get("output_tokens", 0)},
+        "Input Cost ($)":      {"number": round(input_cost, 6)},
+        "Output Cost ($)":     {"number": round(output_cost, 6)},
+        "Total Cost ($)":      {"number": round(input_cost + output_cost, 6)},
+        "Avg Cost/Day ($)":    {"number": round(avg_per_day, 6)},
+        "Projected Month ($)": {"number": round(projected, 4)},
+        "Month":               {"rich_text": [{"text": {"content": month_label}}]},
+    }, "cost report")
+
+# ── Notion Eval Reports DB ────────────────────────────────────────────────────
+
+def get_eval_db_id():
+    return _get_or_create_db(
+        EVAL_DB_FILE, "📊 Mira Eval Reports", "📊",
+        {
+            "Date":             {"title": {}},
+            "Status":           {"select": {}},
+            "Messages Handled": {"number": {"format": "number"}},
+            "Voice Messages":   {"number": {"format": "number"}},
+            "Tasks Added":      {"number": {"format": "number"}},
+            "Shopping Added":   {"number": {"format": "number"}},
+            "Ideas Saved":      {"number": {"format": "number"}},
+            "Calendar Events":  {"number": {"format": "number"}},
+            "Errors":           {"number": {"format": "number"}},
+        }
+    )
+
+def notion_upsert_eval(s: dict, today: str):
+    db_id = get_eval_db_id()
+    if not db_id:
+        return
+    errors = s.get("errors", 0)
+    status = "🟢 Healthy" if errors == 0 else ("🟡 Minor issues" if errors <= 2 else "🔴 Needs attention")
+    _notion_upsert(db_id, today, {
+        "Date":             {"title": [{"text": {"content": today}}]},
+        "Status":           {"select": {"name": status}},
+        "Messages Handled": {"number": s.get("messages", 0)},
+        "Voice Messages":   {"number": s.get("voice_messages", 0)},
+        "Tasks Added":      {"number": s.get("tasks_added", 0)},
+        "Shopping Added":   {"number": s.get("shopping_added", 0)},
+        "Ideas Saved":      {"number": s.get("ideas_added", 0)},
+        "Calendar Events":  {"number": s.get("calendar_events", 0)},
+        "Errors":           {"number": errors},
+    }, "eval report")
 
 # ── File search ──────────────────────────────────────────────────────────────
 
@@ -803,7 +825,7 @@ async def costreport_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"_Syncing to Notion..._"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
-    notion_upsert_report(s, today)
+    notion_upsert_cost(s, today, avg_per_day, projected_claude, now_ist.strftime("%B %Y"))
 
 async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
@@ -836,7 +858,7 @@ async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += "\n\n_Syncing to Notion..._"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
-    notion_upsert_report(s, today)
+    notion_upsert_eval(s, today)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
