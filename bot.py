@@ -753,26 +753,75 @@ async def costreport_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("⛔ Sorry, you're not authorised to use Mira.")
         return
 
-    today = _today()
-    s = get_today_stats()
+    import calendar as cal_mod
+    today     = _today()
+    now_ist   = datetime.now(IST)
+    s         = get_today_stats()
+    all_stats = load_stats()
 
+    # ── Today's cost ──
     input_cost  = (s.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
     output_cost = (s.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
-    total_cost  = input_cost + output_cost
+    total_today = input_cost + output_cost
     chargeable  = s.get("messages", 0)
+
+    # ── Monthly estimate ──
+    month_prefix = now_ist.strftime("%Y-%m")
+    days_in_month = cal_mod.monthrange(now_ist.year, now_ist.month)[1]
+    month_days = {d: v for d, v in all_stats.items() if d.startswith(month_prefix)}
+    tracked_days = len(month_days)
+
+    if tracked_days > 0:
+        month_total_so_far = sum(
+            ((v.get("input_tokens", 0) / 1_000_000) * COST_INPUT_PER_MTK +
+             (v.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK)
+            for v in month_days.values()
+        )
+        avg_per_day      = month_total_so_far / tracked_days
+        projected_claude = avg_per_day * days_in_month
+    else:
+        month_total_so_far = 0.0
+        avg_per_day        = 0.0
+        projected_claude   = 0.0
+
+    # ── Other fixed costs (monthly) ──
+    other_costs = [
+        ("Telegram Bot API",    0.00, "Free forever"),
+        ("Google Calendar API", 0.00, "Free tier"),
+        ("Notion API",          0.00, "Free tier"),
+        ("OpenAI Whisper",      0.00, "Runs locally, free"),
+        ("yfinance (markets)",  0.00, "Free"),
+        ("Mac hosting",         0.00, "Runs on your Mac, free"),
+        ("Railway (if deployed)", 5.00, "Only if you move to cloud"),
+    ]
+    projected_total_min = projected_claude
+    projected_total_max = projected_claude + 5.00   # includes Railway
 
     msg = (
         f"💰 *Mira Cost Report — {today}*\n\n"
-        f"*Chargeable messages:* `{chargeable}`\n\n"
-        f"*Claude API Token Usage*\n"
-        f"  Input tokens:   `{s.get('input_tokens', 0):,}`\n"
-        f"  Output tokens:  `{s.get('output_tokens', 0):,}`\n"
-        f"  Input cost:     `${input_cost:.4f}`\n"
-        f"  Output cost:    `${output_cost:.4f}`\n"
-        f"  ─────────────────────\n"
-        f"  *Total today:*  `${total_cost:.4f}`\n\n"
-        f"*Model:* claude-sonnet-4-6\n"
-        f"*Pricing:* $3 / 1M input · $15 / 1M output\n\n"
+
+        f"*Today*\n"
+        f"  Chargeable messages: `{chargeable}`\n"
+        f"  Input tokens:        `{s.get('input_tokens', 0):,}`\n"
+        f"  Output tokens:       `{s.get('output_tokens', 0):,}`\n"
+        f"  Claude cost today:   `${total_today:.4f}`\n\n"
+
+        f"*This Month — {now_ist.strftime('%B %Y')}*\n"
+        f"  Days tracked:        `{tracked_days}` of `{days_in_month}`\n"
+        f"  Avg cost/day:        `${avg_per_day:.4f}`\n"
+        f"  Spent so far:        `${month_total_so_far:.4f}`\n"
+        f"  Projected Claude:    `${projected_claude:.4f}`\n\n"
+
+        f"*Other Monthly Costs*\n"
+        f"  Telegram / Notion / Calendar / Whisper / yfinance: `Free`\n"
+        f"  Mac hosting (current): `Free`\n"
+        f"  Railway cloud hosting: `~$5.00` _(if you deploy 24/7)_\n\n"
+
+        f"*Projected Total*\n"
+        f"  Running on Mac:    `${projected_total_min:.2f}/month`\n"
+        f"  Running on Railway: `${projected_total_max:.2f}/month`\n\n"
+
+        f"_Model: claude-sonnet-4-6 · $3/1M input · $15/1M output_\n"
         f"_Syncing to Notion..._"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
