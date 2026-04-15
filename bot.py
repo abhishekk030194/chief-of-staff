@@ -52,6 +52,7 @@ CONVERSATION_FILE = "conversation.json"
 CREDENTIALS_FILE = "credentials.json"
 TOKEN_FILE = "token.json"
 STATS_FILE = "daily_stats.json"
+REPORTS_DB_FILE = "reports_db_id.txt"   # auto-saved after first creation
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 # Claude Sonnet 4.6 pricing (USD per million tokens)
@@ -393,6 +394,145 @@ def sync_shopping_to_notion(items: list, added_by: str):
         if item["name"].lower() not in existing and not item.get("bought"):
             notion_add_shopping(item["name"], added_by)
 
+# ── Notion Reports DB ────────────────────────────────────────────────────────
+
+def get_reports_db_id():
+    """Return the Notion Reports DB id, creating the database if needed."""
+    if not notion:
+        return None
+    # Check cached id
+    if os.path.exists(REPORTS_DB_FILE):
+        with open(REPORTS_DB_FILE) as f:
+            db_id = f.read().strip()
+        if db_id:
+            return db_id
+    # Auto-create the database under the workspace root
+    try:
+        payload = json.dumps({
+            "parent": {"type": "workspace", "workspace": True},
+            "icon": {"type": "emoji", "emoji": "📊"},
+            "title": [{"type": "text", "text": {"content": "Mira Daily Reports"}}],
+            "properties": {
+                "Date":            {"title": {}},
+                "Chargeable Msgs": {"number": {"format": "number"}},
+                "Input Tokens":    {"number": {"format": "number"}},
+                "Output Tokens":   {"number": {"format": "number"}},
+                "Input Cost $":    {"number": {"format": "number"}},
+                "Output Cost $":   {"number": {"format": "number"}},
+                "Total Cost $":    {"number": {"format": "number"}},
+                "Voice Messages":  {"number": {"format": "number"}},
+                "Tasks Added":     {"number": {"format": "number"}},
+                "Shopping Added":  {"number": {"format": "number"}},
+                "Ideas Saved":     {"number": {"format": "number"}},
+                "Calendar Events": {"number": {"format": "number"}},
+                "Errors":          {"number": {"format": "number"}},
+                "Status":          {"select": {}},
+            }
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.notion.com/v1/databases",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {NOTION_TOKEN}",
+                "Content-Type": "application/json",
+                "Notion-Version": "2022-06-28",
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req) as resp:
+            db = json.loads(resp.read())
+        db_id = db["id"]
+        with open(REPORTS_DB_FILE, "w") as f:
+            f.write(db_id)
+        logging.info(f"Created Mira Reports DB: {db_id}")
+        return db_id
+    except Exception as e:
+        logging.error(f"Could not create Reports DB: {e}")
+        return None
+
+def notion_upsert_report(s: dict, today: str):
+    """Create or update today's report row in the Notion Reports database."""
+    db_id = get_reports_db_id()
+    if not db_id:
+        return
+
+    input_cost  = (s.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
+    output_cost = (s.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
+    total_cost  = round(input_cost + output_cost, 6)
+    errors      = s.get("errors", 0)
+    status      = "Healthy" if errors == 0 else ("Minor issues" if errors <= 2 else "Needs attention")
+
+    props = {
+        "Date":            {"title": [{"text": {"content": today}}]},
+        "Chargeable Msgs": {"number": s.get("messages", 0)},
+        "Input Tokens":    {"number": s.get("input_tokens", 0)},
+        "Output Tokens":   {"number": s.get("output_tokens", 0)},
+        "Input Cost $":    {"number": round(input_cost, 6)},
+        "Output Cost $":   {"number": round(output_cost, 6)},
+        "Total Cost $":    {"number": total_cost},
+        "Voice Messages":  {"number": s.get("voice_messages", 0)},
+        "Tasks Added":     {"number": s.get("tasks_added", 0)},
+        "Shopping Added":  {"number": s.get("shopping_added", 0)},
+        "Ideas Saved":     {"number": s.get("ideas_added", 0)},
+        "Calendar Events": {"number": s.get("calendar_events", 0)},
+        "Errors":          {"number": errors},
+        "Status":          {"select": {"name": status}},
+    }
+
+    try:
+        # Check if a page for today already exists
+        query_payload = json.dumps({
+            "filter": {"property": "Date", "title": {"equals": today}}
+        }).encode()
+        req = urllib.request.Request(
+            f"https://api.notion.com/v1/databases/{db_id}/query",
+            data=query_payload,
+            headers={
+                "Authorization": f"Bearer {NOTION_TOKEN}",
+                "Content-Type": "application/json",
+                "Notion-Version": "2022-06-28",
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req) as resp:
+            results = json.loads(resp.read()).get("results", [])
+
+        if results:
+            # Update existing page
+            page_id = results[0]["id"]
+            patch_payload = json.dumps({"properties": props}).encode()
+            req2 = urllib.request.Request(
+                f"https://api.notion.com/v1/pages/{page_id}",
+                data=patch_payload,
+                headers={
+                    "Authorization": f"Bearer {NOTION_TOKEN}",
+                    "Content-Type": "application/json",
+                    "Notion-Version": "2022-06-28",
+                },
+                method="PATCH"
+            )
+            urllib.request.urlopen(req2)
+        else:
+            # Create new page
+            create_payload = json.dumps({
+                "parent": {"database_id": db_id},
+                "properties": props
+            }).encode()
+            req3 = urllib.request.Request(
+                "https://api.notion.com/v1/pages",
+                data=create_payload,
+                headers={
+                    "Authorization": f"Bearer {NOTION_TOKEN}",
+                    "Content-Type": "application/json",
+                    "Notion-Version": "2022-06-28",
+                },
+                method="POST"
+            )
+            urllib.request.urlopen(req3)
+        logging.info(f"Notion report upserted for {today}")
+    except Exception as e:
+        logging.error(f"Notion report upsert error: {e}")
+
 # ── File search ──────────────────────────────────────────────────────────────
 
 SEARCH_DIRS = [
@@ -619,10 +759,12 @@ async def costreport_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     input_cost  = (s.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
     output_cost = (s.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
     total_cost  = input_cost + output_cost
+    chargeable  = s.get("messages", 0)
 
     msg = (
         f"💰 *Mira Cost Report — {today}*\n\n"
-        f"*Claude API Usage*\n"
+        f"*Chargeable messages:* `{chargeable}`\n\n"
+        f"*Claude API Token Usage*\n"
         f"  Input tokens:   `{s.get('input_tokens', 0):,}`\n"
         f"  Output tokens:  `{s.get('output_tokens', 0):,}`\n"
         f"  Input cost:     `${input_cost:.4f}`\n"
@@ -630,9 +772,11 @@ async def costreport_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"  ─────────────────────\n"
         f"  *Total today:*  `${total_cost:.4f}`\n\n"
         f"*Model:* claude-sonnet-4-6\n"
-        f"*Pricing:* $3 / 1M input · $15 / 1M output"
+        f"*Pricing:* $3 / 1M input · $15 / 1M output\n\n"
+        f"_Syncing to Notion..._"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
+    notion_upsert_report(s, today)
 
 async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
@@ -649,7 +793,7 @@ async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 *Mira Eval Report — {today}*\n\n"
         f"*Status:* {health}\n\n"
         f"*Activity*\n"
-        f"  💬 Messages handled:    `{s.get('messages', 0)}`\n"
+        f"  💬 Chargeable messages: `{s.get('messages', 0)}`\n"
         f"  🎙️ Voice messages:       `{s.get('voice_messages', 0)}`\n\n"
         f"*Actions taken*\n"
         f"  ✅ Tasks added:          `{s.get('tasks_added', 0)}`\n"
@@ -662,8 +806,10 @@ async def eval_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"\n⚠️ {errors} error(s) occurred today. Check `mira.log` for details."
     else:
         msg += "\n✨ No errors today — Mira is running perfectly!"
+    msg += "\n\n_Syncing to Notion..._"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
+    notion_upsert_report(s, today)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
