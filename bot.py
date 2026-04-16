@@ -18,7 +18,7 @@ from pathlib import Path
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import anthropic
-import whisper
+from faster_whisper import WhisperModel
 from notion_client import Client as NotionClient
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -1507,7 +1507,7 @@ whisper_model = None
 def get_whisper_model():
     global whisper_model
     if whisper_model is None:
-        whisper_model = whisper.load_model("base")
+        whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
     return whisper_model
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1522,8 +1522,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_drive(tmp_path)
 
         model = get_whisper_model()
-        result = model.transcribe(tmp_path)
-        transcription = result["text"].strip()
+        segments, _ = model.transcribe(tmp_path)
+        transcription = " ".join(seg.text for seg in segments).strip()
         os.unlink(tmp_path)
 
         if not transcription:
