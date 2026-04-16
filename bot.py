@@ -10,6 +10,7 @@ import time
 import fnmatch
 import urllib.request
 import urllib.error
+import urllib.parse
 import feedparser
 import pytz
 from datetime import datetime, timedelta
@@ -52,6 +53,7 @@ NOTION_IDEAS_DB = os.getenv("NOTION_IDEAS_DB")
 
 IDEAS_FILE = "ideas.json"
 CHAT_IDS_FILE = "chat_ids.json"
+HEARTBEAT_FILE = "last_heartbeat.txt"
 IST = pytz.timezone("Asia/Kolkata")
 
 notion = NotionClient(auth=NOTION_TOKEN) if NOTION_TOKEN else None
@@ -2027,7 +2029,41 @@ def background_notion_sync():
     except Exception as e:
         logging.error(f"Background Notion sync error: {e}")
 
+async def _send_status_to_all(bot, text: str):
+    """Send a status message to all registered chat IDs."""
+    for chat_id in load_chat_ids():
+        try:
+            await bot.send_message(chat_id=chat_id, text=text)
+        except Exception as e:
+            logging.error(f"Status notify error for {chat_id}: {e}")
+
+async def heartbeat_job(context):
+    """Every 60s: update heartbeat file. On large gap, we just woke from sleep."""
+    now = time.time()
+    gap = None
+    if os.path.exists(HEARTBEAT_FILE):
+        try:
+            with open(HEARTBEAT_FILE) as f:
+                last = float(f.read().strip())
+            gap = now - last
+        except Exception:
+            pass
+    with open(HEARTBEAT_FILE, "w") as f:
+        f.write(str(now))
+    if gap is not None and gap > 300:  # 5+ minute gap = woke from sleep
+        mins = int(gap / 60)
+        await _send_status_to_all(
+            context.bot,
+            f"😴 Mira woke from sleep (Mac was asleep for ~{mins} min)"
+        )
+
 async def post_init(app):
+    # Notify all chats that Mira is online
+    await _send_status_to_all(app.bot, "🟢 Mira is online")
+    # Seed heartbeat so the job has a baseline
+    with open(HEARTBEAT_FILE, "w") as f:
+        f.write(str(time.time()))
+
     await app.bot.set_my_commands([
         ("memories",   "Show everything Mira remembers about the family"),
         ("remember",   "Save a fact — /remember Alekya is allergic to shellfish"),
@@ -2067,6 +2103,8 @@ def main():
         send_daily_digest,
         time=datetime.now(IST).replace(hour=7, minute=0, second=0, microsecond=0).timetz()
     )
+    # Heartbeat: updates every 60s, detects wake from sleep via time gap
+    app.job_queue.run_repeating(heartbeat_job, interval=60, first=60)
     app.add_handler(CommandHandler("start",    start))
     app.add_handler(CommandHandler("myid",     myid_command))
     app.add_handler(CommandHandler("find",     find_command))
@@ -2094,6 +2132,14 @@ def main():
     # ── Graceful shutdown ──
     def _shutdown(signum, frame):
         logging.info("[SHUTDOWN] Signal received — saving state and stopping Mira...")
+        # Notify all chats synchronously before exiting
+        try:
+            for chat_id in load_chat_ids():
+                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                data = urllib.parse.urlencode({"chat_id": chat_id, "text": "🔴 Mira is shutting down"}).encode()
+                urllib.request.urlopen(url, data=data, timeout=5)
+        except Exception as e:
+            logging.error(f"[SHUTDOWN] Notify failed: {e}")
         try:
             background_notion_sync()
             logging.info("[SHUTDOWN] State synced to Notion. Goodbye.")
