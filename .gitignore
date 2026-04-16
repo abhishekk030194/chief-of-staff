@@ -7,6 +7,16 @@ token.json
 tasks.json
 shopping.json
 conversation.json
+ideas.json
+chat_ids.json
+daily_stats.json
+cost_db_id.txt
+eval_db_id.txt
+security_db_id.txt
+
+# Logs
+mira.log
+*.log
 
 # Python
 __pycache__/
