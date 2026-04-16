@@ -40,6 +40,8 @@ _log_handler = logging.handlers.RotatingFileHandler(
 )
 _log_handler.setFormatter(JsonFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[_log_handler, logging.StreamHandler()])
+# Suppress httpx request logs — they print full URLs which contain the Telegram bot token
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # ── Cloud bootstrap: write credential files from env vars if present ──────────
 def _bootstrap_cloud_files():

@@ -13,6 +13,7 @@ daily_stats.json
 cost_db_id.txt
 eval_db_id.txt
 security_db_id.txt
+memory_db_id.txt
 
 # Logs
 mira.log
