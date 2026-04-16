@@ -2055,8 +2055,10 @@ def main():
     run_boot_health_check()
 
     # Sync to Notion on startup
-    logging.info("Syncing to Notion on startup...")
-    background_notion_sync()
+    # Run startup Notion sync in a background thread so it never blocks bot startup
+    import threading
+    logging.info("Syncing to Notion on startup (background)...")
+    threading.Thread(target=background_notion_sync, daemon=True).start()
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
 
