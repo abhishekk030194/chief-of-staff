@@ -439,6 +439,7 @@
       <span class="hero-tag">Image Analysis</span>
       <span class="hero-tag">Long-term Memory</span>
       <span class="hero-tag">Live Market Data</span>
+      <span class="hero-tag">Railway Cloud</span>
       <span class="hero-tag">Python</span>
     </div>
   </div>
@@ -448,7 +449,7 @@
     <div class="stat"><div class="stat-num">1</div><div class="stat-lbl">Evening to build</div></div>
     <div class="stat"><div class="stat-num">0</div><div class="stat-lbl">Lines written by hand</div></div>
     <div class="stat"><div class="stat-num">~$3</div><div class="stat-lbl">Monthly running cost</div></div>
-    <div class="stat"><div class="stat-num">16</div><div class="stat-lbl">Features shipped</div></div>
+    <div class="stat"><div class="stat-num">18</div><div class="stat-lbl">Features shipped</div></div>
   </div>
 
   <div class="divider"></div>
@@ -481,15 +482,19 @@
         </div>
         <div class="titem">
           <h4>Added voice, Notion, and smart digests</h4>
-          <p>Iterated quickly — added OpenAI Whisper for voice, Google Calendar for iPhone reminders, Notion as a live database, and a daily 7 AM digest with real-time stock market indices.</p>
+          <p>Iterated quickly — added faster-whisper for voice transcription, Google Calendar for iPhone reminders, Notion as a live database, and a daily 7 AM digest with real-time stock market indices.</p>
         </div>
         <div class="titem">
           <h4>Added security, observability, and auto-recovery</h4>
-          <p>Prompt injection firewall, secret scanner, real-time Telegram security alerts, Notion security log. Daily cost reports, eval reports, /status command. launchd auto-restart, retry logic, graceful shutdown.</p>
+          <p>Prompt injection firewall, secret scanner, real-time Telegram security alerts, Notion security log. Daily cost reports, eval reports, /status command. Retry logic, graceful shutdown with Notion sync.</p>
         </div>
         <div class="titem">
           <h4>Long-term memory and image analysis</h4>
           <p>Mira now remembers facts about the family across conversations — stored in a Notion Memory database, auto-extracted after each chat. Added Claude Vision so you can send any photo (receipt, document, shopping list) and Mira reads and acts on it.</p>
+        </div>
+        <div class="titem">
+          <h4>Status notifications and 24/7 cloud deployment</h4>
+          <p>Mira now sends Telegram alerts when she goes online (🟢), shuts down (🔴), or wakes from sleep (😴). Deployed to Railway cloud — runs 24/7 independent of the Mac, with voice support via faster-whisper in a Docker container.</p>
         </div>
       </div>
     </div>
@@ -562,7 +567,7 @@
       <div class="feat">
         <div class="feat-icon">⚙️</div>
         <h4>Auto-Recovery</h4>
-        <p>Runs as a launchd service — auto-restarts on crash, retries failed API calls with backoff, syncs state to Notion on shutdown.</p>
+        <p>Retries failed API calls with exponential backoff, syncs state to Notion on shutdown. Hosted on Railway for 24/7 uptime.</p>
       </div>
       <div class="feat">
         <div class="feat-icon">⌨️</div>
@@ -573,6 +578,16 @@
         <div class="feat-icon">👥</div>
         <h4>Family Group Chat</h4>
         <p>Works in a shared Telegram group. Doesn't interrupt every message — only responds when relevant.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🟢</div>
+        <h4>Status Notifications</h4>
+        <p>Mira sends a Telegram message when she comes online, shuts down, or wakes from Mac sleep — so you always know her state.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">☁️</div>
+        <h4>24/7 Cloud Hosting</h4>
+        <p>Deployed on Railway — runs always, independent of any Mac. Docker container with ffmpeg included for voice. ~$0–1/month.</p>
       </div>
     </div>
   </div>
@@ -723,12 +738,13 @@
         <div class="pill"><div class="pill-dot"></div>Claude Vision (multimodal)</div>
         <div class="pill"><div class="pill-dot"></div>Python 3</div>
         <div class="pill"><div class="pill-dot"></div>Telegram Bot API</div>
-        <div class="pill"><div class="pill-dot"></div>OpenAI Whisper</div>
+        <div class="pill"><div class="pill-dot"></div>faster-whisper</div>
         <div class="pill"><div class="pill-dot"></div>Google Calendar API</div>
         <div class="pill"><div class="pill-dot"></div>Notion API</div>
         <div class="pill"><div class="pill-dot"></div>yfinance (live markets)</div>
         <div class="pill"><div class="pill-dot"></div>APScheduler</div>
-        <div class="pill"><div class="pill-dot"></div>launchd (auto-restart)</div>
+        <div class="pill"><div class="pill-dot"></div>Railway (cloud hosting)</div>
+        <div class="pill"><div class="pill-dot"></div>Docker</div>
         <div class="pill"><div class="pill-dot"></div>Claude Code</div>
         <div class="pill"><div class="pill-dot"></div>ffmpeg</div>
       </div>
@@ -750,9 +766,14 @@
         <div class="cost-period">per month (light use)</div>
       </div>
       <div class="cost-card">
-        <div class="cost-service">Google Calendar + Whisper</div>
+        <div class="cost-service">Google Calendar + faster-whisper</div>
         <div class="cost-price">Free</div>
         <div class="cost-period">both free tiers</div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-service">Railway (24/7 cloud)</div>
+        <div class="cost-price">~$0–1</div>
+        <div class="cost-period">within free $5/month credit</div>
       </div>
     </div>
   </div>
@@ -763,7 +784,7 @@
     <div class="roadmap">
       <div class="road-item"><div class="road-icon">📋</div><div class="road-text">Shared task management with Notion sync</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">📅</div><div class="road-text">Google Calendar integration with iPhone reminders</div><div class="road-status done-tag">Shipped</div></div>
-      <div class="road-item"><div class="road-icon">🎙️</div><div class="road-text">Voice message support via Whisper</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🎙️</div><div class="road-text">Voice message support via faster-whisper</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🛒</div><div class="road-text">Smart shopping list with Notion sync</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">💡</div><div class="road-text">Ideas capture with auto-tagging to Notion</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">📈</div><div class="road-text">Live market digest — indices, gold, silver at 7 AM IST</div><div class="road-status done-tag">Shipped</div></div>
@@ -774,7 +795,8 @@
       <div class="road-item"><div class="road-icon">⚙️</div><div class="road-text">Auto-recovery: launchd, retry logic, graceful shutdown</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🧠</div><div class="road-text">Long-term memory — Notion-backed, auto-extracted after every chat</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🖼️</div><div class="road-text">Image & photo analysis via Claude Vision</div><div class="road-status done-tag">Shipped</div></div>
-      <div class="road-item"><div class="road-icon">☁️</div><div class="road-text">Deploy to Railway for 24/7 uptime</div><div class="road-status next-tag">Next</div></div>
+      <div class="road-item"><div class="road-icon">🟢</div><div class="road-text">Status notifications — online, offline, woke from sleep</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">☁️</div><div class="road-text">Deploy to Railway for 24/7 cloud hosting</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">📧</div><div class="road-text">Gmail integration — summarise and draft emails</div><div class="road-status next-tag">Planned</div></div>
       <div class="road-item"><div class="road-icon">💰</div><div class="road-text">Finance & budget tracking</div><div class="road-status next-tag">Planned</div></div>
     </div>

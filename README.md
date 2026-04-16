@@ -2,7 +2,7 @@
 
 > An AI-powered personal assistant built for couples. Manages tasks, shopping, calendar events, ideas, and more — all through a shared Telegram chat.
 
-Built using Claude AI, Python, Telegram Bot API, Google Calendar, Notion, and OpenAI Whisper for voice.
+Built using Claude AI, Python, Telegram Bot API, Google Calendar, Notion, and faster-whisper for voice. Deployed 24/7 on Railway cloud.
 
 ---
 
@@ -30,7 +30,9 @@ Managing a household together is chaotic. Tasks fall through the cracks, shoppin
 | 🔍 File Search | Search and retrieve any file from your MacBook via chat |
 | 🔐 Security | Prompt injection firewall, secret scanner, Telegram alerts, Notion security log |
 | 📡 Observability | `/status`, `/eval`, `/costreport` — live health checks and daily reporting |
-| ⚙️ Auto-Recovery | launchd auto-restart, retry logic, graceful shutdown with Notion sync |
+| 🟢 Status Notifications | Bot sends Telegram alerts when it goes online, offline, or wakes from sleep |
+| ☁️ 24/7 Cloud Hosting | Deployed on Railway — runs always, independent of your Mac |
+| ⚙️ Auto-Recovery | Retry logic, graceful shutdown with Notion sync |
 | ⌨️ Command Autocomplete | Type `/` to see all commands with descriptions instantly |
 
 ---
@@ -44,7 +46,7 @@ You (voice/text) → Telegram → Bot → Claude AI → Action
 ```
 
 1. You send a message (text or voice) in Telegram
-2. Voice messages are transcribed using OpenAI Whisper
+2. Voice messages are transcribed using faster-whisper
 3. The message is sent to Claude with full context (tasks, shopping, calendar, ideas)
 4. Claude understands intent and responds naturally
 5. Actions are taken automatically — calendar events, task additions, Notion sync, etc.
@@ -56,12 +58,13 @@ You (voice/text) → Telegram → Bot → Claude AI → Action
 - **Language:** Python 3
 - **AI Brain:** Claude Sonnet 4.6 (Anthropic API)
 - **Interface:** Telegram Bot API (`python-telegram-bot`)
-- **Voice:** OpenAI Whisper (local, runs on device)
+- **Voice:** faster-whisper (runs in cloud container)
 - **Calendar:** Google Calendar API
 - **Database:** Notion API (tasks, shopping, ideas)
 - **Market Data:** yfinance (real-time stock/commodity prices)
 - **Scheduling:** APScheduler (daily digest at 7 AM IST)
 - **Audio Processing:** ffmpeg
+- **Hosting:** Railway (24/7 cloud deployment, ~$0–1/month)
 
 ---
 
@@ -86,7 +89,7 @@ cd chief-of-staff
 ### 3. Install dependencies
 
 ```bash
-pip3 install python-telegram-bot anthropic openai-whisper \
+pip3 install python-telegram-bot anthropic faster-whisper \
              google-api-python-client google-auth-httplib2 google-auth-oauthlib \
              notion-client feedparser apscheduler pytz yfinance
 brew install ffmpeg
@@ -145,6 +148,17 @@ NOTION_TOKEN=your_token NOTION_TASKS_DB=... \
 NOTION_SHOPPING_DB=... NOTION_IDEAS_DB=... \
 python3 bot.py
 ```
+
+### 10. Deploy to Railway (24/7 cloud)
+
+```bash
+npm install -g @railway/cli
+railway login
+railway init
+railway up
+```
+
+Set all env vars in Railway's dashboard. The included `Dockerfile` and `Procfile` handle everything.
 
 ---
 
@@ -225,12 +239,10 @@ Every day at **7:00 AM IST**, Mira sends a digest covering:
 | Telegram Bot API | Free |
 | Anthropic (Claude) | ~$2–5/month for typical family use |
 | Google Calendar API | Free |
-| Whisper (voice) | Free (runs locally) |
+| faster-whisper (voice) | Free (runs in container) |
 | Notion API | Free |
 | yfinance (market data) | Free |
-| Hosting (your Mac) | Free (runs locally) |
-
-For 24/7 uptime without keeping your Mac on, deploy to [Railway](https://railway.app) (~$5/month).
+| Railway (24/7 hosting) | Free (within $5/month credit) |
 
 ---
 
@@ -238,19 +250,21 @@ For 24/7 uptime without keeping your Mac on, deploy to [Railway](https://railway
 
 - [x] Shared task management with Notion sync
 - [x] Google Calendar integration with iPhone reminders
-- [x] Voice message support via OpenAI Whisper
+- [x] Voice message support via faster-whisper
 - [x] Live market indices in morning digest (yfinance)
 - [x] MacBook file search from Telegram
 - [x] Command autocomplete in Telegram
 - [x] Security: prompt injection firewall, secret scanner, Telegram alerts, Notion security log
 - [x] Observability: /status, /eval, /costreport with Notion sync
-- [x] Auto-recovery: launchd, retry logic, graceful shutdown
+- [x] Auto-recovery: retry logic, graceful shutdown
 - [x] Long-term memory system (Notion-backed, auto-extraction + manual /remember)
 - [x] Image & photo analysis (Claude vision — receipts, documents, lists)
+- [x] Status notifications: 🟢 online, 🔴 shutting down, 😴 woke from sleep
+- [x] Deploy to Railway for 24/7 cloud hosting
+- [x] Wife's access (Alekya added to ALLOWED_USERS)
 - [ ] Gmail integration (summarise emails, draft replies)
 - [ ] Weekly summary every Monday morning
 - [ ] Finance & budget tracking
-- [ ] Deploy to Railway for 24/7 uptime
 - [ ] Wife's Google Calendar sync
 
 ---
@@ -259,10 +273,11 @@ For 24/7 uptime without keeping your Mac on, deploy to [Railway](https://railway
 
 - [Anthropic Claude](https://anthropic.com) — AI reasoning
 - [python-telegram-bot](https://python-telegram-bot.org) — Telegram integration
-- [OpenAI Whisper](https://github.com/openai/whisper) — Voice transcription
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — Voice transcription
 - [Google Calendar API](https://developers.google.com/calendar) — Calendar management
 - [Notion API](https://developers.notion.com) — Database and knowledge management
 - [yfinance](https://github.com/ranaroussi/yfinance) — Real-time market data
+- [Railway](https://railway.app) — Cloud hosting
 - [Claude Code](https://claude.ai/code) — Used to build the entire project
 
 ---
