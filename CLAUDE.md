@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Install dependencies
-pip3 install python-telegram-bot anthropic openai-whisper \
+pip3 install python-telegram-bot anthropic faster-whisper \
              google-api-python-client google-auth-httplib2 google-auth-oauthlib \
              notion-client feedparser apscheduler pytz yfinance
 brew install ffmpeg  # required for voice message processing
@@ -21,6 +21,8 @@ python3 -c "from bot import get_calendar_service; get_calendar_service()"
 # Run
 python3 bot.py
 ```
+
+The bot is also deployed to **Railway** (24/7 cloud). The `Dockerfile` and `Procfile` handle the cloud build. Cloud-specific env vars bootstrap credential files on first boot via `_bootstrap_cloud_files()` at module load time.
 
 All required environment variables (see `.env.example`):
 - `TELEGRAM_TOKEN`, `ANTHROPIC_API_KEY`
@@ -88,7 +90,15 @@ Auto-created Notion databases (IDs persisted to `.txt` files after first creatio
 
 ### Scheduling
 
-APScheduler sends the morning digest at 7:00 AM IST daily to all registered chat IDs. Signal handlers (`SIGTERM`, `SIGINT`) trigger a Notion sync before shutdown.
+APScheduler runs two jobs:
+- `send_daily_digest` — morning digest at 7:00 AM IST to all registered chat IDs
+- `heartbeat_job` — fires every 60 seconds, writes a timestamp to `last_heartbeat.txt`; if the gap since last heartbeat exceeds 5 minutes it sends a "woke from sleep" notification (detects Mac sleep/wake on local runs)
+
+`post_init` (ApplicationBuilder hook) sends a 🟢 online notification to all chat IDs on startup and seeds the heartbeat file. `post_shutdown` (hook) sends a 🔴 shutting down notification and triggers a Notion sync using `urllib` directly (the async HTTP client is already closed at that point).
+
+### Voice Transcription
+
+Voice messages are downloaded as `.ogg` files and transcribed via `faster_whisper.WhisperModel("base", device="cpu", compute_type="int8")`. The model is lazy-loaded on first voice message (`get_whisper_model()`). Transcription: `segments, _ = model.transcribe(path)` → join segment texts. Do not switch back to `openai-whisper` — it cannot be built reliably in Docker on Python 3.11-slim.
 
 ### Security Layers
 
