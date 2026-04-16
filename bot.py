@@ -88,8 +88,9 @@ CONVERSATION_FILE = "conversation.json"
 CREDENTIALS_FILE = "credentials.json"
 TOKEN_FILE = "token.json"
 STATS_FILE = "daily_stats.json"
-COST_DB_FILE = "cost_db_id.txt"     # auto-saved after first creation
-EVAL_DB_FILE = "eval_db_id.txt"     # auto-saved after first creation
+COST_DB_FILE   = "cost_db_id.txt"
+EVAL_DB_FILE   = "eval_db_id.txt"
+MEMORY_DB_FILE = "memory_db_id.txt"
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 # Claude Sonnet 4.6 pricing (USD per million tokens)
@@ -732,6 +733,144 @@ def notion_upsert_eval(s: dict, today: str):
         "Errors":           {"number": errors},
     }, "eval report")
 
+# ── Long-term Memory ─────────────────────────────────────────────────────────
+
+MEMORY_CATEGORIES = ["Health", "Goals", "Preferences", "Important Dates", "Family", "Work", "Habits", "Other"]
+
+def get_memory_db_id():
+    return _get_or_create_db(
+        MEMORY_DB_FILE, "🧠 Mira Memory", "🧠",
+        {
+            "Memory":     {"title": {}},
+            "Person":     {"select": {}},
+            "Category":   {"select": {}},
+            "Source":     {"rich_text": {}},
+            "Date Added": {"date": {}},
+            "Active":     {"checkbox": {}},
+        }
+    )
+
+def memory_save(fact: str, person: str = "Both", category: str = "Other", source: str = "conversation"):
+    """Save a new memory to Notion. Skips if a very similar one already exists."""
+    db_id = get_memory_db_id()
+    if not db_id:
+        return
+    try:
+        # Check for near-duplicate (same fact text)
+        existing = _notion_request(
+            f"https://api.notion.com/v1/databases/{db_id}/query",
+            {"filter": {"property": "Memory", "title": {"contains": fact[:40]}}}
+        ).get("results", [])
+        if existing:
+            return  # already stored
+        _notion_request("https://api.notion.com/v1/pages", {
+            "parent": {"database_id": db_id},
+            "properties": {
+                "Memory":     {"title": [{"text": {"content": fact}}]},
+                "Person":     {"select": {"name": person}},
+                "Category":   {"select": {"name": category}},
+                "Source":     {"rich_text": [{"text": {"content": source}}]},
+                "Date Added": {"date": {"start": datetime.now(IST).isoformat()}},
+                "Active":     {"checkbox": True},
+            }
+        })
+        logging.info(f"[MEMORY] Saved: {fact[:80]}")
+    except Exception as e:
+        logging.error(f"Memory save error: {e}")
+
+def memory_load_all() -> list:
+    """Return all active memories from Notion."""
+    db_id = get_memory_db_id()
+    if not db_id:
+        return []
+    try:
+        pages = _notion_request(
+            f"https://api.notion.com/v1/databases/{db_id}/query",
+            {"filter": {"property": "Active", "checkbox": {"equals": True}},
+             "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+             "page_size": 50}
+        ).get("results", [])
+        memories = []
+        for p in pages:
+            props = p["properties"]
+            title = props.get("Memory", {}).get("title", [])
+            fact  = title[0]["text"]["content"] if title else ""
+            person   = props.get("Person", {}).get("select", {})
+            category = props.get("Category", {}).get("select", {})
+            if fact:
+                memories.append({
+                    "fact":     fact,
+                    "person":   person.get("name", "Both") if person else "Both",
+                    "category": category.get("name", "Other") if category else "Other",
+                    "page_id":  p["id"],
+                })
+        return memories
+    except Exception as e:
+        logging.error(f"Memory load error: {e}")
+        return []
+
+def memory_forget(page_id: str):
+    """Mark a memory as inactive (soft delete)."""
+    try:
+        _notion_request(f"https://api.notion.com/v1/pages/{page_id}",
+                        {"properties": {"Active": {"checkbox": False}}}, method="PATCH")
+    except Exception as e:
+        logging.error(f"Memory forget error: {e}")
+
+def format_memories_for_context(memories: list) -> str:
+    """Format memories into a concise block for Claude's system prompt."""
+    if not memories:
+        return ""
+    by_person = {}
+    for m in memories:
+        p = m["person"]
+        by_person.setdefault(p, []).append(f"[{m['category']}] {m['fact']}")
+    lines = ["Long-term memory about the family:"]
+    for person, facts in by_person.items():
+        lines.append(f"\n{person}:")
+        for f in facts:
+            lines.append(f"  - {f}")
+    return "\n".join(lines)
+
+def extract_and_save_memories(conversation_text: str, user_name: str):
+    """Ask Claude to extract memorable facts from the conversation and save them."""
+    try:
+        prompt = f"""Read this conversation and extract any facts worth remembering long-term about the people involved.
+Only extract concrete, specific, lasting facts — not temporary states or one-off events.
+Good examples: allergies, goals, important dates, preferences, habits, family info.
+Bad examples: "asked about the weather", "was hungry today".
+
+Return ONLY a JSON array. If nothing worth remembering, return [].
+Format: [{{"fact": "...", "person": "Abhishek|Alekya|Both", "category": "Health|Goals|Preferences|Important Dates|Family|Work|Habits|Other"}}]
+
+Conversation:
+{conversation_text[-2000:]}"""
+
+        response = with_retry(
+            lambda: client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=500,
+                messages=[{"role": "user", "content": prompt}]
+            ),
+            retries=2, delay=2, label="memory extraction"
+        )
+        if not response:
+            return
+        raw = response.content[0].text.strip()
+        # Extract JSON array from response
+        match = re.search(r'\[.*\]', raw, re.DOTALL)
+        if not match:
+            return
+        facts = json.loads(match.group())
+        for item in facts:
+            fact     = item.get("fact", "").strip()
+            person   = item.get("person", "Both")
+            category = item.get("category", "Other")
+            if fact and len(fact) > 5:
+                memory_save(fact, person, category, source=f"conversation with {user_name}")
+    except Exception as e:
+        logging.error(f"Memory extraction error: {e}")
+
 # ── File search ──────────────────────────────────────────────────────────────
 
 SEARCH_DIRS = [
@@ -808,6 +947,8 @@ Recent ideas:
 Upcoming calendar events:
 {events}
 
+{memories}
+
 IMPORTANT — Calendar event detection:
 If the user's message contains a date, time, or scheduling intent (e.g. "tomorrow", "on Friday", "at 3pm", "next week", "schedule", "book", "appointment", "remind me on"), respond with a JSON block at the END of your reply in this exact format:
 <calendar>
@@ -866,6 +1007,22 @@ If the user shares an idea (blog idea, AI product, business idea, article to rea
 </idea>
 
 Types must be exactly one of: Blog Idea, AI Product, Article to Read, Business Idea, Other.
+
+IMPORTANT — Image analysis:
+When the user sends a photo, analyse it carefully and respond naturally. Apply the same action tags as you would for text:
+- Shopping receipt, grocery list, or product → extract items with <shopping> tag
+- Handwritten to-do list or notes → create tasks
+- Bill, invoice, or payment reminder → note the amount and add a payment task
+- Calendar invite, event poster, or schedule → create a calendar event with <calendar> tag
+- Prescription or medical document → summarise clearly and suggest storing as a memory
+- Whiteboard or document → transcribe and summarise
+- General photo → describe helpfully and ask how you can assist
+
+IMPORTANT — Long-term memory:
+If the user explicitly asks you to remember something (e.g. "remember that I'm allergic to peanuts", "note that Alekya's birthday is March 5"), respond with:
+<remember>{{"fact": "the fact to remember", "person": "Abhishek|Alekya|Both", "category": "Health|Goals|Preferences|Important Dates|Family|Work|Habits|Other"}}</remember>
+
+Only use <remember> when the user explicitly asks to save something. Do not use it for routine conversation.
 
 Group chat rules:
 - Both Abhishek and Alekya share the same task list and calendar
@@ -1255,6 +1412,63 @@ async def clearshop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_shopping(items)
     await update.message.reply_text(f"🗑️ Cleared {removed} bought item(s) from shopping list!")
 
+async def memories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await block_unauthorised(update, context): return
+    await update.message.reply_text("🧠 Loading memories...", parse_mode="Markdown")
+    memories = memory_load_all()
+    if not memories:
+        await update.message.reply_text("🧠 No memories stored yet.\n\nTell me something like:\n_'Remember that Alekya is allergic to shellfish'_\nor just have a few conversations — I'll learn automatically!", parse_mode="Markdown")
+        return
+    by_person = {}
+    for m in memories:
+        p = m["person"]
+        by_person.setdefault(p, []).append((m["category"], m["fact"], m["page_id"]))
+    msg = f"🧠 *Mira's Memory* ({len(memories)} facts stored)\n"
+    for person, facts in by_person.items():
+        msg += f"\n*{person}:*\n"
+        for i, (category, fact, _) in enumerate(facts, 1):
+            msg += f"  {i}. [{category}] {fact}\n"
+    msg += "\n_Use /forget <number> to remove a memory_"
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def remember_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await block_unauthorised(update, context): return
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /remember <fact>\n\n"
+            "Examples:\n"
+            "• /remember Alekya is allergic to shellfish\n"
+            "• /remember Our wedding anniversary is June 12\n"
+            "• /remember Abhishek goes to the gym on Tuesday and Thursday",
+            parse_mode="Markdown"
+        )
+        return
+    fact = " ".join(context.args)
+    user_name = update.message.from_user.first_name
+    memory_save(fact, person="Both", category="Other", source=f"manual — {user_name}")
+    await update.message.reply_text(f"🧠 Got it! Saved to memory:\n_{fact}_", parse_mode="Markdown")
+
+async def forget_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await block_unauthorised(update, context): return
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Usage: /forget <number>\nUse /memories to see the list with numbers.")
+        return
+    memories = memory_load_all()
+    idx = int(context.args[0]) - 1
+    # Flatten all memories in the same order as /memories shows them
+    flat = []
+    by_person = {}
+    for m in memories:
+        by_person.setdefault(m["person"], []).append(m)
+    for person_mems in by_person.values():
+        flat.extend(person_mems)
+    if idx < 0 or idx >= len(flat):
+        await update.message.reply_text("Invalid number. Use /memories to see the list.")
+        return
+    target = flat[idx]
+    memory_forget(target["page_id"])
+    await update.message.reply_text(f"🗑️ Removed from memory:\n_{target['fact']}_", parse_mode="Markdown")
+
 # ── Voice message handler ─────────────────────────────────────────────────────
 
 whisper_model = None
@@ -1296,6 +1510,47 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         increment_stat("errors")
         await update.message.reply_text("⚠️ Couldn't process the voice message. Please try again.")
 
+# ── Photo handler ─────────────────────────────────────────────────────────────
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await block_unauthorised(update, context): return
+    await update.message.reply_text("🖼️ Got your photo, analysing...")
+    try:
+        import base64
+
+        # Highest-res version is always the last in the array
+        photo = update.message.photo[-1]
+        file  = await context.bot.get_file(photo.file_id)
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = tmp.name
+        await file.download_to_drive(tmp_path)
+
+        with open(tmp_path, "rb") as f:
+            image_b64 = base64.standard_b64encode(f.read()).decode("utf-8")
+        os.unlink(tmp_path)
+
+        user_name = update.message.from_user.first_name
+        caption   = update.message.caption or ""
+        prompt    = f"{user_name}: {caption}" if caption else f"{user_name}: [sent a photo]"
+
+        # Build multi-modal content block for Claude
+        image_content = [
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64},
+            },
+            {"type": "text", "text": prompt},
+        ]
+
+        increment_stat("image_messages")
+        await process_text_message(update, context, caption or "[photo]", image_content=image_content)
+
+    except Exception as e:
+        logging.error(f"Photo error: {e}")
+        increment_stat("errors")
+        await update.message.reply_text("⚠️ Couldn't process the photo. Please try again.")
+
 # ── Main message handler ──────────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1320,8 +1575,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await process_text_message(update, context, user_message)
 
-async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
-    """Core logic: takes a text string and generates a response (used by both text and voice handlers)."""
+async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str, image_content=None):
+    """Core logic: generates a response from text or image (used by text, voice, and photo handlers)."""
     user_name = update.message.from_user.first_name
     user_id   = update.effective_user.id
     save_chat_id(update.effective_chat.id)
@@ -1362,23 +1617,39 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     ideas = load_ideas()
     ideas_text = "\n".join([f"- [{i['type']}] {i['text']}" for i in ideas[-5:]]) if ideas else "No ideas yet."
 
+    # Load long-term memories and format for system prompt
+    memories = memory_load_all()
+    memory_text = format_memories_for_context(memories)
+
     system = SYSTEM_PROMPT.format(
         datetime=datetime.now().strftime("%A, %B %d %Y at %I:%M %p"),
         tasks=task_text,
         shopping=shopping_text,
         ideas=ideas_text,
-        events=event_text
+        events=event_text,
+        memories=memory_text
     )
 
     conversation = load_conversation()
-    conversation.append({"role": "user", "content": f"{user_name}: {user_message}"})
+
+    if image_content:
+        # For images: send the image + caption to Claude, but store only text in history
+        api_message = {"role": "user", "content": image_content}
+        history_message = {"role": "user", "content": f"{user_name}: [📷 photo] {user_message}"}
+    else:
+        api_message = {"role": "user", "content": f"{user_name}: {user_message}"}
+        history_message = api_message
+
+    # Build messages for API: prior history (text only) + current message
+    api_messages = conversation + [api_message]
+    conversation.append(history_message)
 
     response = with_retry(
         lambda: client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
             system=system,
-            messages=conversation
+            messages=api_messages
         ),
         retries=3, delay=3, label="Claude API"
     )
@@ -1588,6 +1859,20 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
             logging.error(f"Idea capture error: {e}")
             increment_stat("errors")
 
+    # Handle explicit <remember> tag
+    remember_match = re.search(r"<remember>(.*?)</remember>", reply, re.DOTALL)
+    if remember_match:
+        try:
+            mem_data = json.loads(remember_match.group(1).strip())
+            fact     = mem_data.get("fact", "").strip()
+            person   = mem_data.get("person", "Both")
+            category = mem_data.get("category", "Other")
+            if fact and len(fact) > 3:
+                memory_save(fact, person, category, source=f"explicit — {user_name}")
+                logging.info(f"[MEMORY] Explicit save: {fact[:80]}")
+        except Exception as e:
+            logging.error(f"Remember tag error: {e}")
+
     clean_reply = re.sub(r"<idea>.*?</idea>", "", reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<shopping>.*?</shopping>", "", clean_reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<calendar>.*?</calendar>", "", clean_reply, flags=re.DOTALL)
@@ -1596,7 +1881,8 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     clean_reply = re.sub(r"<shoppingdone>.*?</shoppingdone>", "", clean_reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<ideadone>.*?</ideadone>", "", clean_reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<markalldone\s*/?>", "", clean_reply)
-    clean_reply = re.sub(r"<markallbought\s*/?>", "", clean_reply).strip()
+    clean_reply = re.sub(r"<markallbought\s*/?>", "", clean_reply)
+    clean_reply = re.sub(r"<remember>.*?</remember>", "", clean_reply, flags=re.DOTALL).strip()
 
     if calendar_match:
         try:
@@ -1635,6 +1921,14 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             # Fallback to plain text if Markdown parsing fails
             await update.message.reply_text(clean_reply)
+
+    # Background memory extraction — runs after reply sent, doesn't block
+    import asyncio as _asyncio
+    convo_text = "\n".join(
+        f"{m['role']}: {m['content']}" for m in conversation[-6:]
+    )
+    loop = _asyncio.get_event_loop()
+    loop.run_in_executor(None, extract_and_save_memories, convo_text, user_name)
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -1735,6 +2029,9 @@ def background_notion_sync():
 
 async def post_init(app):
     await app.bot.set_my_commands([
+        ("memories",   "Show everything Mira remembers about the family"),
+        ("remember",   "Save a fact — /remember Alekya is allergic to shellfish"),
+        ("forget",     "Remove a memory — /forget 3"),
         ("digest",     "Morning digest: tasks, shopping, ideas & markets"),
         ("tasks",      "Show all pending tasks"),
         ("add",        "Add a task — /add Buy groceries"),
@@ -1781,11 +2078,15 @@ def main():
     app.add_handler(CommandHandler("shopping",    shopping_command))
     app.add_handler(CommandHandler("bought",      bought_command))
     app.add_handler(CommandHandler("clearshop",   clearshop_command))
+    app.add_handler(CommandHandler("memories",    memories_command))
+    app.add_handler(CommandHandler("remember",    remember_command))
+    app.add_handler(CommandHandler("forget",      forget_command))
     app.add_handler(CommandHandler("costreport",  costreport_command))
     app.add_handler(CommandHandler("eval",        eval_command))
     app.add_handler(CommandHandler("status",      status_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 
     # ── Graceful shutdown ──

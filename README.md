@@ -21,13 +21,16 @@ Managing a household together is chaotic. Tasks fall through the cracks, shoppin
 | 💡 Ideas Capture | Save blog ideas, AI product ideas, and more with auto-tagging |
 | 📅 Google Calendar | Creates real calendar events from natural language with reminders |
 | 🎙️ Voice Messages | Send a voice note — it transcribes and responds intelligently |
+| 🖼️ Image Analysis | Send any photo — receipts, lists, documents, bills — Claude reads and acts on them |
 | 👥 Group Chat | Works in a shared Telegram group for both partners |
-| 🧠 Context Memory | Remembers recent conversation for natural follow-ups |
-| 🗃️ Notion Sync | All tasks, shopping, and ideas auto-sync to Notion databases |
+| 🧠 Long-term Memory | Remembers facts about the family across all conversations (Notion-backed) |
+| 🗃️ Notion Sync | All tasks, shopping, ideas, memory, cost and eval reports auto-sync to Notion |
 | 📰 Morning Digest | Daily 7 AM digest with tasks, shopping, ideas, and live market data |
 | 📈 Live Market Indices | Real-time prices and % change for major global and Indian indices |
 | 🔍 File Search | Search and retrieve any file from your MacBook via chat |
-| 🔐 Security | Only authorised family members can use the bot |
+| 🔐 Security | Prompt injection firewall, secret scanner, Telegram alerts, Notion security log |
+| 📡 Observability | `/status`, `/eval`, `/costreport` — live health checks and daily reporting |
+| ⚙️ Auto-Recovery | launchd auto-restart, retry logic, graceful shutdown with Notion sync |
 | ⌨️ Command Autocomplete | Type `/` to see all commands with descriptions instantly |
 
 ---
@@ -151,6 +154,9 @@ Type `/` in Telegram to see all commands with auto-suggestions.
 
 | Command | Description |
 |---------|-------------|
+| `/memories` | Show everything Mira remembers about the family |
+| `/remember <fact>` | Save a fact manually — e.g. `/remember Alekya is allergic to shellfish` |
+| `/forget <number>` | Remove a memory by number |
 | `/digest` | Morning digest: tasks, shopping, ideas & live market data |
 | `/tasks` | View all pending tasks |
 | `/add <task>` | Add a task manually |
@@ -161,6 +167,9 @@ Type `/` in Telegram to see all commands with auto-suggestions.
 | `/clearshop` | Remove all bought items |
 | `/calendar` | View upcoming calendar events |
 | `/find <keywords>` | Search for a file on your MacBook |
+| `/costreport` | Today's Claude API cost, token usage, and monthly projection |
+| `/eval` | Today's activity report and health check |
+| `/status` | Live status: uptime, integrations, today's activity |
 | `/notion` | Force sync tasks/shopping/ideas to Notion |
 | `/myid` | Show your Telegram user ID |
 
@@ -227,6 +236,17 @@ For 24/7 uptime without keeping your Mac on, deploy to [Railway](https://railway
 
 ## Roadmap
 
+- [x] Shared task management with Notion sync
+- [x] Google Calendar integration with iPhone reminders
+- [x] Voice message support via OpenAI Whisper
+- [x] Live market indices in morning digest (yfinance)
+- [x] MacBook file search from Telegram
+- [x] Command autocomplete in Telegram
+- [x] Security: prompt injection firewall, secret scanner, Telegram alerts, Notion security log
+- [x] Observability: /status, /eval, /costreport with Notion sync
+- [x] Auto-recovery: launchd, retry logic, graceful shutdown
+- [x] Long-term memory system (Notion-backed, auto-extraction + manual /remember)
+- [x] Image & photo analysis (Claude vision — receipts, documents, lists)
 - [ ] Gmail integration (summarise emails, draft replies)
 - [ ] Weekly summary every Monday morning
 - [ ] Finance & budget tracking

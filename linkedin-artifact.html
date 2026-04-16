@@ -436,6 +436,8 @@
       <span class="hero-tag">Google Calendar</span>
       <span class="hero-tag">Notion</span>
       <span class="hero-tag">Voice Recognition</span>
+      <span class="hero-tag">Image Analysis</span>
+      <span class="hero-tag">Long-term Memory</span>
       <span class="hero-tag">Live Market Data</span>
       <span class="hero-tag">Python</span>
     </div>
@@ -446,7 +448,7 @@
     <div class="stat"><div class="stat-num">1</div><div class="stat-lbl">Evening to build</div></div>
     <div class="stat"><div class="stat-num">0</div><div class="stat-lbl">Lines written by hand</div></div>
     <div class="stat"><div class="stat-num">~$3</div><div class="stat-lbl">Monthly running cost</div></div>
-    <div class="stat"><div class="stat-num">12</div><div class="stat-lbl">Features shipped</div></div>
+    <div class="stat"><div class="stat-num">16</div><div class="stat-lbl">Features shipped</div></div>
   </div>
 
   <div class="divider"></div>
@@ -482,8 +484,12 @@
           <p>Iterated quickly — added OpenAI Whisper for voice, Google Calendar for iPhone reminders, Notion as a live database, and a daily 7 AM digest with real-time stock market indices.</p>
         </div>
         <div class="titem">
-          <h4>Polished and open-sourced</h4>
-          <p>Added security (only family members can use it), command autocomplete, IST timestamps, file search, and ideas capture. Code is open-source on GitHub.</p>
+          <h4>Added security, observability, and auto-recovery</h4>
+          <p>Prompt injection firewall, secret scanner, real-time Telegram security alerts, Notion security log. Daily cost reports, eval reports, /status command. launchd auto-restart, retry logic, graceful shutdown.</p>
+        </div>
+        <div class="titem">
+          <h4>Long-term memory and image analysis</h4>
+          <p>Mira now remembers facts about the family across conversations — stored in a Notion Memory database, auto-extracted after each chat. Added Claude Vision so you can send any photo (receipt, document, shopping list) and Mira reads and acts on it.</p>
         </div>
       </div>
     </div>
@@ -535,18 +541,33 @@
       </div>
       <div class="feat">
         <div class="feat-icon">🧠</div>
-        <h4>Context Memory</h4>
-        <p>Remembers recent conversations so follow-up questions feel natural. Knows who's talking and responds accordingly.</p>
+        <h4>Long-term Memory</h4>
+        <p>Remembers facts about the family across all conversations — allergies, goals, important dates. Auto-extracted after every chat and stored in a Notion Memory database.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🖼️</div>
+        <h4>Image & Photo Analysis</h4>
+        <p>Send any photo — a grocery receipt, a bill, a handwritten list, a document. Claude reads it and takes the right action automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🔐</div>
+        <h4>Security Firewall</h4>
+        <p>Prompt injection detection, secret leak scanner, real-time Telegram security alerts, and a Notion security log for every access attempt.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📡</div>
+        <h4>Observability & Reports</h4>
+        <p>Daily cost reports (tokens, $), eval reports (actions taken, errors), live /status checks — all synced to Notion automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">⚙️</div>
+        <h4>Auto-Recovery</h4>
+        <p>Runs as a launchd service — auto-restarts on crash, retries failed API calls with backoff, syncs state to Notion on shutdown.</p>
       </div>
       <div class="feat">
         <div class="feat-icon">⌨️</div>
         <h4>Command Autocomplete</h4>
-        <p>Type / in Telegram to see all 12 commands with descriptions instantly — no need to remember syntax.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🔐</div>
-        <h4>Family-Only Security</h4>
-        <p>Only authorised Telegram users can interact with Mira. Everyone else is silently ignored.</p>
+        <p>Type / in Telegram to see all 18 commands with descriptions instantly — no need to remember syntax.</p>
       </div>
       <div class="feat">
         <div class="feat-icon">👥</div>
@@ -645,6 +666,22 @@
           </div>
         </div>
 
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Alekya</div>
+            <div class="bubble">🖼️ <em>[Photo of electricity bill]</em></div>
+          </div>
+          <div class="msg-ava">👩</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">📄 I can see your electricity bill — ₹2,340 due by 25th April.<br><br>✅ Added task: <em>Pay electricity bill ₹2,340 before 25th April</em><br><br>Want me to set a reminder a few days before?</div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -654,7 +691,7 @@
     <div class="label">How It Works</div>
     <div class="arch">
       <div class="arch-row">
-        <div class="arch-box">🎙️ Voice / Text</div>
+        <div class="arch-box">🎙️ Voice / Text / 🖼️ Photo</div>
         <div class="arch-arrow">→</div>
         <div class="arch-box">📱 Telegram</div>
         <div class="arch-arrow">→</div>
@@ -662,15 +699,17 @@
         <div class="arch-arrow">→</div>
         <div class="arch-box">🤖 Claude AI</div>
       </div>
-      <div class="arch-row" style="padding-left: 160px;">
+      <div class="arch-row" style="padding-left: 180px;">
         <div class="arch-arrow">↓</div>
       </div>
-      <div class="arch-row" style="padding-left: 20px; gap: 10px;">
+      <div class="arch-row" style="padding-left: 20px; gap: 10px; flex-wrap: wrap;">
         <div class="arch-box">📅 Google Calendar</div>
         <div class="arch-box">🗃️ Notion</div>
         <div class="arch-box">📋 Tasks</div>
         <div class="arch-box">🛒 Shopping</div>
+        <div class="arch-box">🧠 Memory</div>
         <div class="arch-box">📈 yfinance</div>
+        <div class="arch-box">🔐 Security Log</div>
       </div>
     </div>
   </div>
@@ -681,6 +720,7 @@
     <div class="card">
       <div class="pills">
         <div class="pill"><div class="pill-dot"></div>Claude Sonnet 4.6 (Anthropic)</div>
+        <div class="pill"><div class="pill-dot"></div>Claude Vision (multimodal)</div>
         <div class="pill"><div class="pill-dot"></div>Python 3</div>
         <div class="pill"><div class="pill-dot"></div>Telegram Bot API</div>
         <div class="pill"><div class="pill-dot"></div>OpenAI Whisper</div>
@@ -688,6 +728,7 @@
         <div class="pill"><div class="pill-dot"></div>Notion API</div>
         <div class="pill"><div class="pill-dot"></div>yfinance (live markets)</div>
         <div class="pill"><div class="pill-dot"></div>APScheduler</div>
+        <div class="pill"><div class="pill-dot"></div>launchd (auto-restart)</div>
         <div class="pill"><div class="pill-dot"></div>Claude Code</div>
         <div class="pill"><div class="pill-dot"></div>ffmpeg</div>
       </div>
@@ -727,7 +768,12 @@
       <div class="road-item"><div class="road-icon">💡</div><div class="road-text">Ideas capture with auto-tagging to Notion</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">📈</div><div class="road-text">Live market digest — indices, gold, silver at 7 AM IST</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🔍</div><div class="road-text">MacBook file search from Telegram</div><div class="road-status done-tag">Shipped</div></div>
-      <div class="road-item"><div class="road-icon">⌨️</div><div class="road-text">Telegram command autocomplete with descriptions</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">⌨️</div><div class="road-text">Telegram command autocomplete</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🔐</div><div class="road-text">Security: prompt injection firewall, secret scanner, Telegram alerts, Notion log</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">📡</div><div class="road-text">Observability: /status, /eval, /costreport with Notion sync</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">⚙️</div><div class="road-text">Auto-recovery: launchd, retry logic, graceful shutdown</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🧠</div><div class="road-text">Long-term memory — Notion-backed, auto-extracted after every chat</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🖼️</div><div class="road-text">Image & photo analysis via Claude Vision</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">☁️</div><div class="road-text">Deploy to Railway for 24/7 uptime</div><div class="road-status next-tag">Next</div></div>
       <div class="road-item"><div class="road-icon">📧</div><div class="road-text">Gmail integration — summarise and draft emails</div><div class="road-status next-tag">Planned</div></div>
       <div class="road-item"><div class="road-icon">💰</div><div class="road-text">Finance & budget tracking</div><div class="road-status next-tag">Planned</div></div>

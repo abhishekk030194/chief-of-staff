@@ -50,7 +50,7 @@ def strip_all_xml_tags(reply: str) -> str:
     return clean
 
 
-def resolve_task_match(match_str: str, pending_tasks: list) -> str | None:
+def resolve_task_match(match_str: str, pending_tasks: list):
     """Mirror the taskdone resolution logic from process_text_message."""
     if match_str.isdigit():
         idx = int(match_str) - 1
@@ -63,7 +63,7 @@ def resolve_task_match(match_str: str, pending_tasks: list) -> str | None:
     return None
 
 
-def resolve_shopping_match(match_str: str, pending_items: list) -> str | None:
+def resolve_shopping_match(match_str: str, pending_items: list):
     """Mirror the shoppingdone resolution logic from process_text_message."""
     if match_str.isdigit():
         idx = int(match_str) - 1
