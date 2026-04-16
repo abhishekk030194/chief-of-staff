@@ -18,7 +18,11 @@ from pathlib import Path
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import anthropic
-import whisper
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
 from notion_client import Client as NotionClient
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -1512,6 +1516,9 @@ def get_whisper_model():
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await block_unauthorised(update, context): return
+    if not WHISPER_AVAILABLE:
+        await update.message.reply_text("🎙️ Voice messages aren't supported in this environment. Please send text instead.")
+        return
     await update.message.reply_text("🎙️ Got your voice message, transcribing...")
     try:
         voice = update.message.voice or update.message.audio
