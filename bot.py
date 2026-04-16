@@ -41,6 +41,35 @@ _log_handler = logging.handlers.RotatingFileHandler(
 _log_handler.setFormatter(JsonFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[_log_handler, logging.StreamHandler()])
 
+# ── Cloud bootstrap: write credential files from env vars if present ──────────
+def _bootstrap_cloud_files():
+    """On Railway (or any cloud), write credential/data files from env vars."""
+    import json as _json
+    # Google OAuth files
+    _token = os.getenv("GOOGLE_TOKEN_JSON")
+    if _token and not os.path.exists("token.json"):
+        with open("token.json", "w") as f: f.write(_token)
+    _creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if _creds and not os.path.exists("credentials.json"):
+        with open("credentials.json", "w") as f: f.write(_creds)
+    # Notion DB ID files
+    for _env, _file in [
+        ("NOTION_COST_DB_ID",     "cost_db_id.txt"),
+        ("NOTION_EVAL_DB_ID",     "eval_db_id.txt"),
+        ("NOTION_SECURITY_DB_ID", "security_db_id.txt"),
+        ("NOTION_MEMORY_DB_ID",   "memory_db_id.txt"),
+    ]:
+        _val = os.getenv(_env)
+        if _val and not os.path.exists(_file):
+            with open(_file, "w") as f: f.write(_val)
+    # Chat IDs
+    _chat_ids = os.getenv("CHAT_IDS")
+    if _chat_ids and not os.path.exists("chat_ids.json"):
+        ids = [int(x.strip()) for x in _chat_ids.split(",") if x.strip()]
+        with open("chat_ids.json", "w") as f: _json.dump(ids, f)
+
+_bootstrap_cloud_files()
+
 # ── Uptime tracking ───────────────────────────────────────────────────────────
 BOT_START_TIME = datetime.now(pytz.timezone("Asia/Kolkata"))
 
@@ -2057,6 +2086,23 @@ async def heartbeat_job(context):
             f"😴 Mira woke from sleep (Mac was asleep for ~{mins} min)"
         )
 
+async def post_shutdown(app):
+    """Runs after polling has stopped and Telegram connection is cleanly closed."""
+    logging.info("[SHUTDOWN] Sending shutdown notification and syncing Notion...")
+    # Use urllib (sync) — the async bot HTTP client is already closed at this point
+    try:
+        for chat_id in load_chat_ids():
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            data = urllib.parse.urlencode({"chat_id": chat_id, "text": "🔴 Mira is shutting down"}).encode()
+            urllib.request.urlopen(url, data=data, timeout=5)
+    except Exception as e:
+        logging.error(f"[SHUTDOWN] Notify failed: {e}")
+    try:
+        background_notion_sync()
+        logging.info("[SHUTDOWN] State synced to Notion. Goodbye.")
+    except Exception as e:
+        logging.error(f"[SHUTDOWN] Sync failed: {e}")
+
 async def post_init(app):
     # Notify all chats that Mira is online
     await _send_status_to_all(app.bot, "🟢 Mira is online")
@@ -2096,7 +2142,7 @@ def main():
     logging.info("Syncing to Notion on startup (background)...")
     threading.Thread(target=background_notion_sync, daemon=True).start()
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
 
     # Schedule daily digest at 7:00 AM IST (01:30 UTC)
     app.job_queue.run_daily(
@@ -2128,27 +2174,6 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-
-    # ── Graceful shutdown ──
-    def _shutdown(signum, frame):
-        logging.info("[SHUTDOWN] Signal received — saving state and stopping Mira...")
-        # Notify all chats synchronously before exiting
-        try:
-            for chat_id in load_chat_ids():
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                data = urllib.parse.urlencode({"chat_id": chat_id, "text": "🔴 Mira is shutting down"}).encode()
-                urllib.request.urlopen(url, data=data, timeout=5)
-        except Exception as e:
-            logging.error(f"[SHUTDOWN] Notify failed: {e}")
-        try:
-            background_notion_sync()
-            logging.info("[SHUTDOWN] State synced to Notion. Goodbye.")
-        except Exception as e:
-            logging.error(f"[SHUTDOWN] Sync failed: {e}")
-        sys.exit(0)
-
-    signal.signal(signal.SIGTERM, _shutdown)
-    signal.signal(signal.SIGINT,  _shutdown)
 
     print("🤖 Mira is running...")
     app.run_polling()
