@@ -1,4 +1,5 @@
 python-telegram-bot==22.5
+openai-whisper==20240930
 anthropic==0.95.0
 notion-client==3.0.0
 google-api-python-client==2.194.0
