@@ -2033,7 +2033,7 @@ def notion_dedup_db(database_id: str, name_key: str = "Name"):
         logging.error(f"Notion dedup error: {e}")
 
 def background_notion_sync():
-    """Silently sync local tasks and shopping to Notion, with dedup."""
+    """Bidirectional sync between local JSON files and Notion databases."""
     try:
         # Dedup first
         if NOTION_TASKS_DB:
@@ -2043,19 +2043,60 @@ def background_notion_sync():
         if NOTION_IDEAS_DB:
             notion_dedup_db(NOTION_IDEAS_DB)
 
-        # Sync tasks
+        # Fetch Notion state once per list (reused for both directions)
         tasks = load_tasks()
-        existing_tasks = [t["text"].lower() for t in notion_get_tasks()]
+        items = load_shopping()
+        local_ideas = load_ideas()
+        notion_tasks = notion_get_tasks()
+        notion_items = notion_get_shopping()
+        notion_ideas = notion_get_ideas()
+
+        # ── Local → Notion ────────────────────────────────────────────────────
+        notion_task_texts = {t["text"].lower() for t in notion_tasks}
         for task in tasks:
-            if not task.get("done") and task["text"].lower() not in existing_tasks:
+            if not task.get("done") and task["text"].lower() not in notion_task_texts:
                 notion_add_task(task["text"], task.get("added_by", "Mira"))
 
-        # Sync shopping
-        items = load_shopping()
-        existing_items = [i["name"].lower() for i in notion_get_shopping()]
+        notion_item_names = {i["name"].lower() for i in notion_items}
         for item in items:
-            if not item.get("bought") and item["name"].lower() not in existing_items:
+            if not item.get("bought") and item["name"].lower() not in notion_item_names:
                 notion_add_shopping(item["name"], item.get("added_by", "Mira"))
+
+        notion_idea_texts = {i["text"].lower() for i in notion_ideas}
+        for idea in local_ideas:
+            if idea["text"].lower() not in notion_idea_texts:
+                notion_add_idea(idea["text"], idea.get("type", "Other"), idea.get("added_by", "Mira"))
+
+        # ── Notion → Local (restore after redeploy / filesystem wipe) ────────
+        local_task_texts = {t["text"].lower() for t in tasks}
+        added_tasks = False
+        for nt in notion_tasks:
+            if nt["text"].lower() not in local_task_texts:
+                tasks.append({"text": nt["text"], "done": False, "added_by": "Notion", "date": datetime.now().isoformat()})
+                local_task_texts.add(nt["text"].lower())
+                added_tasks = True
+        if added_tasks:
+            save_tasks(tasks)
+
+        local_item_names = {i["name"].lower() for i in items}
+        added_shopping = False
+        for ni in notion_items:
+            if ni["name"].lower() not in local_item_names:
+                items.append({"name": ni["name"], "bought": False, "added_by": "Notion", "date": datetime.now().isoformat()})
+                local_item_names.add(ni["name"].lower())
+                added_shopping = True
+        if added_shopping:
+            save_shopping(items)
+
+        local_idea_texts = {i["text"].lower() for i in local_ideas}
+        added_ideas = False
+        for ni in notion_ideas:
+            if ni["text"].lower() not in local_idea_texts:
+                local_ideas.append({"text": ni["text"], "type": ni.get("type", "Other"), "added_by": "Notion", "date": datetime.now().isoformat()})
+                local_idea_texts.add(ni["text"].lower())
+                added_ideas = True
+        if added_ideas:
+            save_ideas(local_ideas)
 
     except Exception as e:
         logging.error(f"Background Notion sync error: {e}")
