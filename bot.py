@@ -982,6 +982,16 @@ Upcoming calendar events:
 
 {memories}
 
+CRITICAL — Notify the other person:
+Whenever one person's message contains an action item FOR the other person — whether it's a reminder, task, errand, or request — you MUST include this tag in your response:
+<notify_other>Hey [other person's name]! [sender's name] wants you to: [action item]</notify_other>
+
+Examples that MUST trigger this:
+- Alekya: "remind Abhishek to buy chocolates" → <notify_other>Hey Abhishek! Alekya wants you to: buy chocolates 🍫</notify_other>
+- Abhishek: "tell Alekya to call the doctor" → <notify_other>Hey Alekya! Abhishek wants you to: call the doctor</notify_other>
+- Alekya: "ask Abhishek to pay the electricity bill" → <notify_other>Hey Abhishek! Alekya wants you to: pay the electricity bill</notify_other>
+Do NOT use this for general shared updates (e.g. "we ran out of milk") — only for directed action items.
+
 IMPORTANT — Calendar event detection:
 If the user's message contains a date, time, or scheduling intent (e.g. "tomorrow", "on Friday", "at 3pm", "next week", "schedule", "book", "appointment", "remind me on"), respond with a JSON block at the END of your reply in this exact format:
 <calendar>
@@ -1906,6 +1916,20 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             logging.error(f"Remember tag error: {e}")
 
+    # Notify the other person if the instruction has an action item for them
+    notify_match = re.search(r"<notify_other>(.*?)</notify_other>", reply, re.DOTALL)
+    logging.info(f"[NOTIFY_OTHER] tag found: {bool(notify_match)} | user: {user_name} | reply snippet: {reply[:200]}")
+    if notify_match:
+        other_id = next((uid for uid in ALLOWED_USERS if uid != user_id), None)
+        logging.info(f"[NOTIFY_OTHER] other_id={other_id} | message: {notify_match.group(1).strip()[:100]}")
+        if other_id:
+            notify_text = notify_match.group(1).strip()
+            try:
+                await context.bot.send_message(chat_id=other_id, text=notify_text)
+                logging.info(f"[NOTIFY_OTHER] sent to {other_id} successfully")
+            except Exception as e:
+                logging.error(f"[NOTIFY_OTHER] send error: {e}")
+
     clean_reply = re.sub(r"<idea>.*?</idea>", "", reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<shopping>.*?</shopping>", "", clean_reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<calendar>.*?</calendar>", "", clean_reply, flags=re.DOTALL)
@@ -1915,7 +1939,8 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     clean_reply = re.sub(r"<ideadone>.*?</ideadone>", "", clean_reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<markalldone\s*/?>", "", clean_reply)
     clean_reply = re.sub(r"<markallbought\s*/?>", "", clean_reply)
-    clean_reply = re.sub(r"<remember>.*?</remember>", "", clean_reply, flags=re.DOTALL).strip()
+    clean_reply = re.sub(r"<remember>.*?</remember>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<notify_other>.*?</notify_other>", "", clean_reply, flags=re.DOTALL).strip()
 
     if calendar_match:
         try:
