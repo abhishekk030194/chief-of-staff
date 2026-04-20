@@ -2064,6 +2064,25 @@ async def send_daily_digest(context):
     recent_ideas = notion_ideas[-5:] if notion_ideas else []
     ideas_text = "\n".join([f"  💡 [{i['type']}] {i['text']}" for i in recent_ideas]) if recent_ideas else "  No new ideas yet!"
 
+    # Today's calendar events
+    today_str = datetime.now(IST).strftime("%Y-%m-%d")
+    try:
+        today_events = get_events_in_range(today_str, today_str)
+        if today_events:
+            cal_lines = []
+            for e in today_events:
+                start = e["start"].get("dateTime", e["start"].get("date", ""))
+                if "T" in start:
+                    dt = datetime.fromisoformat(start[:19])
+                    cal_lines.append(f"  📌 {e.get('summary','?')} at {dt.strftime('%I:%M %p')}")
+                else:
+                    cal_lines.append(f"  📌 {e.get('summary','?')} (all day)")
+            calendar_text = "\n".join(cal_lines)
+        else:
+            calendar_text = "  📭 Nothing scheduled today"
+    except Exception:
+        calendar_text = "  Calendar not available"
+
     # News
     headlines = get_news_headlines()
     news_text = "\n".join(headlines[:6]) if headlines else "  Could not fetch news."
@@ -2071,6 +2090,7 @@ async def send_daily_digest(context):
     msg = (
         f"🌅 *Good morning, Abhishek & Alekya!*\n"
         f"_{now}_\n\n"
+        f"📅 *Today's Calendar:*\n{calendar_text}\n\n"
         f"📋 *Pending Tasks:*\n{tasks_text}\n\n"
         f"🛒 *Shopping List:*\n{shopping_text}\n\n"
         f"💡 *Recent Ideas:*\n{ideas_text}\n\n"
