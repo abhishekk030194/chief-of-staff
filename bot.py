@@ -2083,10 +2083,19 @@ async def send_daily_digest(context):
     except Exception:
         calendar_text = "  Calendar not available"
 
-    # Yesterday's cost + eval summary
+    # Yesterday's cost + eval summary + cumulative total
     yesterday = (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
     all_stats = load_stats()
     ys = all_stats.get(yesterday, {})
+
+    # Cumulative cost across all tracked days
+    total_cost_all = sum(
+        (v.get("input_tokens", 0) / 1_000_000) * COST_INPUT_PER_MTK +
+        (v.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
+        for v in all_stats.values()
+    )
+    total_days = len(all_stats)
+
     if ys:
         input_cost  = (ys.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
         output_cost = (ys.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
@@ -2094,12 +2103,13 @@ async def send_daily_digest(context):
         errors      = ys.get("errors", 0)
         health_icon = "🟢" if errors == 0 else ("🟡" if errors <= 2 else "🔴")
         stats_text  = (
-            f"  {health_icon} {ys.get('messages', 0)} messages · ${yday_cost:.4f}\n"
+            f"  {health_icon} Yesterday: {ys.get('messages', 0)} messages · `${yday_cost:.4f}`\n"
             f"  ✅ {ys.get('tasks_added', 0)} tasks · 🛒 {ys.get('shopping_added', 0)} items · "
-            f"📅 {ys.get('calendar_events', 0)} events · 💡 {ys.get('ideas_added', 0)} ideas"
+            f"📅 {ys.get('calendar_events', 0)} events · 💡 {ys.get('ideas_added', 0)} ideas\n"
+            f"  💸 Total since launch: `${total_cost_all:.4f}` over {total_days} days"
         )
     else:
-        stats_text = "  No data for yesterday"
+        stats_text = f"  No data for yesterday\n  💸 Total since launch: `${total_cost_all:.4f}` over {total_days} days"
 
     # News
     headlines = get_news_headlines()
