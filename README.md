@@ -30,6 +30,7 @@ Managing a household together is chaotic. Tasks fall through the cracks, shoppin
 | 🔍 File Search | Search and retrieve any file from your MacBook via chat |
 | 🔐 Security | Prompt injection firewall, secret scanner, Telegram alerts, Notion security log |
 | 📡 Observability | `/status`, `/eval`, `/costreport` — live health checks and daily reporting |
+| 🔔 Cross-User Notifications | When one person gives Mira an action item for the other, they get an instant Telegram message |
 | 🟢 Status Notifications | Bot sends Telegram alerts when it goes online, offline, or wakes from sleep |
 | ☁️ 24/7 Cloud Hosting | Deployed on Railway — runs always, independent of your Mac |
 | ⚙️ Auto-Recovery | Retry logic, graceful shutdown with Notion sync |
@@ -262,6 +263,7 @@ Every day at **7:00 AM IST**, Mira sends a digest covering:
 - [x] Status notifications: 🟢 online, 🔴 shutting down, 😴 woke from sleep
 - [x] Deploy to Railway for 24/7 cloud hosting
 - [x] Wife's access (Alekya added to ALLOWED_USERS)
+- [x] Cross-user notifications — instant Telegram ping when one person assigns an action to the other
 - [ ] Gmail integration (summarise emails, draft replies)
 - [ ] Weekly summary every Monday morning
 - [ ] Finance & budget tracking

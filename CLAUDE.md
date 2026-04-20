@@ -33,7 +33,7 @@ There is no test suite, build step, linter, or CI pipeline.
 
 ## Architecture
 
-The entire application lives in `bot.py` (~1800 lines). There is no module structure.
+The entire application lives in `bot.py` (~1900 lines). There is no module structure.
 
 ### Core Message Flow
 
@@ -64,6 +64,7 @@ Claude's response may contain XML-like action blocks that the bot parses with `r
 | `<markallbought></markallbought>` | Marks all shopping bought |
 | `<ideadone>{"match": ...}</ideadone>` | Removes an idea |
 | `<idea>{"title": ..., "type": ...}</idea>` | Saves idea to local JSON + Notion |
+| `<notify_other>message</notify_other>` | Sends an instant Telegram message to the other user (e.g. Alekya → Abhishek) |
 
 Action blocks are stripped from the reply before sending to the user.
 

@@ -437,6 +437,7 @@
       <span class="hero-tag">Notion</span>
       <span class="hero-tag">Voice Recognition</span>
       <span class="hero-tag">Image Analysis</span>
+      <span class="hero-tag">Cross-User Notifications</span>
       <span class="hero-tag">Long-term Memory</span>
       <span class="hero-tag">Live Market Data</span>
       <span class="hero-tag">Railway Cloud</span>
@@ -449,7 +450,7 @@
     <div class="stat"><div class="stat-num">1</div><div class="stat-lbl">Evening to build</div></div>
     <div class="stat"><div class="stat-num">0</div><div class="stat-lbl">Lines written by hand</div></div>
     <div class="stat"><div class="stat-num">~$3</div><div class="stat-lbl">Monthly running cost</div></div>
-    <div class="stat"><div class="stat-num">18</div><div class="stat-lbl">Features shipped</div></div>
+    <div class="stat"><div class="stat-num">19</div><div class="stat-lbl">Features shipped</div></div>
   </div>
 
   <div class="divider"></div>
@@ -495,6 +496,10 @@
         <div class="titem">
           <h4>Status notifications and 24/7 cloud deployment</h4>
           <p>Mira now sends Telegram alerts when she goes online (🟢), shuts down (🔴), or wakes from sleep (😴). Deployed to Railway cloud — runs 24/7 independent of the Mac, with voice support via faster-whisper in a Docker container.</p>
+        </div>
+        <div class="titem">
+          <h4>Cross-user notifications — Mira as the messenger</h4>
+          <p>When one person gives Mira an instruction with an action for the other (e.g. "remind Abhishek to buy chocolates"), Mira instantly sends a direct Telegram message to that person. No more relying on "I told Mira to tell you."</p>
         </div>
       </div>
     </div>
@@ -588,6 +593,11 @@
         <div class="feat-icon">☁️</div>
         <h4>24/7 Cloud Hosting</h4>
         <p>Deployed on Railway — runs always, independent of any Mac. Docker container with ffmpeg included for voice. ~$0–1/month.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🔔</div>
+        <h4>Cross-User Notifications</h4>
+        <p>When Alekya says "remind Abhishek to buy chocolates", he gets an instant Telegram DM. Works both ways — frictionless coordination between partners.</p>
       </div>
     </div>
   </div>
@@ -697,6 +707,22 @@
           </div>
         </div>
 
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Alekya</div>
+            <div class="bubble">Remind Abhishek to pick up chocolates on his way home</div>
+          </div>
+          <div class="msg-ava">👩</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira → Abhishek (private DM)</div>
+            <div class="bubble">🔔 Hey Abhishek! Alekya wants you to: pick up chocolates on your way home 🍫</div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -797,6 +823,7 @@
       <div class="road-item"><div class="road-icon">🖼️</div><div class="road-text">Image & photo analysis via Claude Vision</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🟢</div><div class="road-text">Status notifications — online, offline, woke from sleep</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">☁️</div><div class="road-text">Deploy to Railway for 24/7 cloud hosting</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🔔</div><div class="road-text">Cross-user notifications — instant Telegram ping when one partner assigns an action to the other</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">📧</div><div class="road-text">Gmail integration — summarise and draft emails</div><div class="road-status next-tag">Planned</div></div>
       <div class="road-item"><div class="road-icon">💰</div><div class="road-text">Finance & budget tracking</div><div class="road-status next-tag">Planned</div></div>
     </div>
