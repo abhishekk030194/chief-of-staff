@@ -44,7 +44,7 @@ Just talk to it naturally — text or voice:
 | 👥 Group Chat | Works in a shared Telegram group for both partners |
 | 🧠 Long-term Memory | Remembers facts about the family across all conversations (Notion-backed) |
 | 🗃️ Notion Sync | All tasks, shopping, ideas, memory, cost and eval reports auto-sync |
-| 📰 Morning Digest | Daily 7 AM digest with today's calendar, tasks, shopping, ideas, and markets |
+| 📰 Morning Digest | Daily 7 AM digest with today's calendar, tasks, shopping, ideas, yesterday's cost/eval, and markets |
 | 📈 Live Market Indices | Real-time prices and % change for major global and Indian indices |
 | 🔍 File Search | Search and retrieve any file from your MacBook via chat |
 | 🔐 Security | Prompt injection firewall, secret scanner, Telegram alerts, Notion security log |
@@ -205,6 +205,7 @@ Every day at **7:00 AM IST**, Mira sends a digest covering:
 - ✅ Pending tasks
 - 🛒 Shopping list
 - 💡 Recent ideas
+- 📊 Yesterday's activity: messages, cost, actions taken, health status
 - 📈 Live market indices with % change (S&P 500, Dow Jones, NASDAQ, Nifty 50, Sensex, Gold, Silver)
 
 ---

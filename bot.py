@@ -2083,6 +2083,24 @@ async def send_daily_digest(context):
     except Exception:
         calendar_text = "  Calendar not available"
 
+    # Yesterday's cost + eval summary
+    yesterday = (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
+    all_stats = load_stats()
+    ys = all_stats.get(yesterday, {})
+    if ys:
+        input_cost  = (ys.get("input_tokens", 0)  / 1_000_000) * COST_INPUT_PER_MTK
+        output_cost = (ys.get("output_tokens", 0) / 1_000_000) * COST_OUTPUT_PER_MTK
+        yday_cost   = input_cost + output_cost
+        errors      = ys.get("errors", 0)
+        health_icon = "🟢" if errors == 0 else ("🟡" if errors <= 2 else "🔴")
+        stats_text  = (
+            f"  {health_icon} {ys.get('messages', 0)} messages · ${yday_cost:.4f}\n"
+            f"  ✅ {ys.get('tasks_added', 0)} tasks · 🛒 {ys.get('shopping_added', 0)} items · "
+            f"📅 {ys.get('calendar_events', 0)} events · 💡 {ys.get('ideas_added', 0)} ideas"
+        )
+    else:
+        stats_text = "  No data for yesterday"
+
     # News
     headlines = get_news_headlines()
     news_text = "\n".join(headlines[:6]) if headlines else "  Could not fetch news."
@@ -2094,6 +2112,7 @@ async def send_daily_digest(context):
         f"📋 *Pending Tasks:*\n{tasks_text}\n\n"
         f"🛒 *Shopping List:*\n{shopping_text}\n\n"
         f"💡 *Recent Ideas:*\n{ideas_text}\n\n"
+        f"📊 *Yesterday's Activity:*\n{stats_text}\n\n"
         f"📰 *Morning Headlines:*\n{news_text}"
     )
 
