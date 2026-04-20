@@ -416,6 +416,17 @@
   .digest-box .green { color: #10b981; }
   .digest-box .red   { color: #f87171; }
 
+  /* ── Chat section sub-label ── */
+  .chat-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #4b5563;
+    margin: 28px 0 12px;
+  }
+  .chat-section-label:first-child { margin-top: 0; }
+
   /* ── Limitations ── */
   .limit-grid {
     display: grid;
@@ -500,6 +511,7 @@
   <!-- Chat demo -->
   <div class="section">
     <div class="label">See It In Action</div>
+    <div class="chat-section-label">👥 Group Chat — Family HQ</div>
     <div class="chat-wrap">
       <div class="chat-top">
         <div class="chat-ava">🤖</div>
@@ -576,6 +588,123 @@
 
       </div>
     </div>
+
+    <div class="chat-section-label">👨 Abhishek's Private Chat</div>
+    <div class="chat-wrap">
+      <div class="chat-top">
+        <div class="chat-ava">🤖</div>
+        <div>
+          <div class="chat-name">Mira</div>
+          <div class="chat-green">● online</div>
+        </div>
+      </div>
+      <div class="chat-body">
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Abhishek</div>
+            <div class="bubble">What's on my calendar this week?</div>
+          </div>
+          <div class="msg-ava">👨</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">📅 <strong>This week's events:</strong><br><br>• Doctor appointment — Mon Apr 21 at 11:00 AM<br>• Team standup — Tue Apr 22 at 03:00 PM<br>• Dinner with parents — Sat Apr 26 at 07:30 PM</div>
+          </div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira (from Alekya)</div>
+            <div class="bubble notify">🔔 Hey Abhishek! Alekya wants you to: pick up chocolates on your way home 🍫</div>
+          </div>
+        </div>
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Abhishek</div>
+            <div class="bubble">Got it! Also add "pick up dry cleaning" to my tasks</div>
+          </div>
+          <div class="msg-ava">👨</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">✅ Added task: <em>Pick up dry cleaning</em> — synced to Notion!</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="chat-section-label">👩 Alekya's Private Chat</div>
+    <div class="chat-wrap">
+      <div class="chat-top">
+        <div class="chat-ava">🤖</div>
+        <div>
+          <div class="chat-name">Mira</div>
+          <div class="chat-green">● online</div>
+        </div>
+      </div>
+      <div class="chat-body">
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Alekya</div>
+            <div class="bubble">🎙️ <em>Voice note (4 sec): "remind Abhishek to book the hotel for our anniversary trip"</em></div>
+          </div>
+          <div class="msg-ava">👩</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">🎙️ Heard: <em>"remind Abhishek to book the hotel for our anniversary trip"</em><br><br>Done! I've added it as a task and sent Abhishek a message right now. 💌</div>
+          </div>
+        </div>
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Alekya</div>
+            <div class="bubble">What do we still need to buy?</div>
+          </div>
+          <div class="msg-ava">👩</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">🛒 <strong>Shopping list:</strong><br><br>• Milk<br>• Eggs<br>• Olive oil<br>• Chocolates (Abhishek's picking up)<br><br>4 items pending.</div>
+          </div>
+        </div>
+
+        <div class="msg right">
+          <div>
+            <div class="name-tag">Alekya</div>
+            <div class="bubble">Remember that I'm allergic to shellfish</div>
+          </div>
+          <div class="msg-ava">👩</div>
+        </div>
+
+        <div class="msg left">
+          <div class="msg-ava">🤖</div>
+          <div>
+            <div class="name-tag">Mira</div>
+            <div class="bubble">🧠 Got it — saved to memory! I'll keep this in mind whenever food or restaurants come up.<br><br><em>Alekya is allergic to shellfish</em></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 
   <!-- How built -->
@@ -838,7 +967,7 @@
       <div class="limit-item"><strong>Voice is English-only</strong>The faster-whisper base model works best with clear English. Accuracy drops with accents or mixed-language speech.</div>
       <div class="limit-item"><strong>File search needs local Mac</strong>The /find command only works when the bot is running locally on a Mac — not on Railway.</div>
       <div class="limit-item"><strong>Google Calendar setup requires a Mac</strong>The one-time OAuth flow needs a browser. After that, it works fine on Railway.</div>
-      <div class="limit-item"><strong>No real-time two-way calendar sync</strong>Mira creates events, but doesn't read back calendar changes made directly in Google Calendar (yet).</div>
+      <div class="limit-item"><strong>Can't edit or delete calendar events</strong>Mira creates events and reads them back, but can't modify or remove events you created directly in Google Calendar.</div>
     </div>
   </div>
 
