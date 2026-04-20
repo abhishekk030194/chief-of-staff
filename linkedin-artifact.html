@@ -287,6 +287,7 @@
 
   .msg.left  .bubble { background: #13132a; border: 1px solid #2d2d5e; color: #e5e7eb; border-top-left-radius: 4px; }
   .msg.right .bubble { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; border-top-right-radius: 4px; }
+  .bubble.notify { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #d1fae5; border-top-left-radius: 4px; }
 
   .name-tag { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
   .msg.right .name-tag { text-align: right; }
@@ -343,33 +344,12 @@
 
   .road-icon { font-size: 20px; width: 36px; text-align: center; }
   .road-text { font-size: 14px; color: #d1d5db; font-weight: 500; }
-  .road-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+  .road-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
   .done-tag    { background: rgba(16,185,129,0.15); color: #10b981; }
   .next-tag    { background: rgba(124,58,237,0.15); color: #a78bfa; }
 
-  /* ── Key quote ── */
-  .quote {
-    background: linear-gradient(135deg, #0e0e1a, #13132a);
-    border: 1px solid #2d2d5e;
-    border-left: 4px solid #7c3aed;
-    border-radius: 0 20px 20px 0;
-    padding: 32px;
-    margin-bottom: 16px;
-  }
-
-  .quote p {
-    font-size: 18px;
-    font-weight: 500;
-    color: #e5e7eb;
-    line-height: 1.7;
-    font-style: italic;
-  }
-
-  .quote .author { margin-top: 12px; font-size: 13px; color: #6b7280; font-style: normal; }
-
   /* ── CTA ── */
   .cta {
-    text-align: center;
     background: linear-gradient(135deg, #0e0e1a, #13132a);
     border: 1px solid #2d2d5e;
     border-radius: 24px;
@@ -378,7 +358,22 @@
   }
 
   .cta h3 { font-size: 26px; font-weight: 700; margin-bottom: 12px; }
-  .cta p  { color: #9ca3af; font-size: 15px; margin-bottom: 24px; line-height: 1.6; }
+  .cta p  { color: #9ca3af; font-size: 15px; margin-bottom: 8px; line-height: 1.6; }
+  .cta-requirements {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 20px 0 28px;
+  }
+  .cta-req {
+    background: #13132a;
+    border: 1px solid #2d2d5e;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #c4b5fd;
+  }
+  .cta-req span { color: #6b7280; display: block; font-size: 11px; margin-top: 2px; }
 
   .cta-link {
     display: inline-block;
@@ -420,6 +415,45 @@
   .digest-box .d-section { color: #6b7280; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 14px; margin-bottom: 4px; }
   .digest-box .green { color: #10b981; }
   .digest-box .red   { color: #f87171; }
+
+  /* ── Limitations ── */
+  .limit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .limit-item {
+    background: #0e0e1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 14px;
+    padding: 16px 20px;
+    font-size: 13px;
+    color: #6b7280;
+    line-height: 1.6;
+  }
+  .limit-item strong { color: #9ca3af; display: block; margin-bottom: 4px; }
+
+  /* ── Mobile responsive ── */
+  @media (max-width: 640px) {
+    body { padding: 32px 16px; }
+
+    .hero h1 { font-size: 34px; }
+    .hero .subtitle { font-size: 16px; }
+
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .feat-grid { grid-template-columns: 1fr; }
+    .cost-grid { grid-template-columns: 1fr; }
+    .limit-grid { grid-template-columns: 1fr; }
+
+    .arch-row { padding-left: 0 !important; }
+
+    .bubble { max-width: 92%; font-size: 13px; }
+
+    .cta { padding: 32px 20px; }
+    .cta h3 { font-size: 20px; }
+
+    .road-text { font-size: 13px; }
+  }
 </style>
 </head>
 <body>
@@ -429,7 +463,7 @@
   <div class="hero">
     <div class="badge">🤖 Personal AI Project · April 2026</div>
     <h1>Meet Mira — My Family's AI Assistant</h1>
-    <p class="subtitle">A personal AI agent that manages tasks, calendar, shopping, ideas, Notion, and live market data for me and my wife — built with zero coding experience using Claude Code.</p>
+    <p class="subtitle">A real AI agent running 24/7 in the cloud, managing tasks, calendar, shopping, ideas, and daily briefings for me and my wife — built entirely with Claude Code.</p>
     <div class="hero-tags">
       <span class="hero-tag">Claude AI</span>
       <span class="hero-tag">Telegram</span>
@@ -441,14 +475,13 @@
       <span class="hero-tag">Long-term Memory</span>
       <span class="hero-tag">Live Market Data</span>
       <span class="hero-tag">Railway Cloud</span>
-      <span class="hero-tag">Python</span>
     </div>
   </div>
 
   <!-- Stats -->
   <div class="stats">
-    <div class="stat"><div class="stat-num">1</div><div class="stat-lbl">Evening to build</div></div>
-    <div class="stat"><div class="stat-num">0</div><div class="stat-lbl">Lines written by hand</div></div>
+    <div class="stat"><div class="stat-num">1</div><div class="stat-lbl">Evening to build v1</div></div>
+    <div class="stat"><div class="stat-num">~1,900</div><div class="stat-lbl">Lines of Python</div></div>
     <div class="stat"><div class="stat-num">~$3</div><div class="stat-lbl">Monthly running cost</div></div>
     <div class="stat"><div class="stat-num">19</div><div class="stat-lbl">Features shipped</div></div>
   </div>
@@ -460,173 +493,7 @@
     <div class="label">The Problem</div>
     <div class="card">
       <h3>Life is chaotic. We needed a shared brain.</h3>
-      <p>Between managing work, household tasks, shopping, and keeping each other in the loop — things kept falling through the cracks. Tasks lived in one app, the shopping list in another, market updates in a third browser tab, ideas scattered in notes. I wanted a single intelligent assistant that both of us could talk to naturally and that actually took action — not another app to maintain.</p>
-    </div>
-  </div>
-
-  <!-- How built -->
-  <div class="section">
-    <div class="label">How We Built It</div>
-    <div class="card">
-      <div class="timeline">
-        <div class="titem">
-          <h4>Started with a conversation, not a spec</h4>
-          <p>No wireframes, no technical planning. Just described what I wanted to Claude Code: "I want an AI assistant for me and my wife that handles tasks, scheduling, shopping, and household management."</p>
-        </div>
-        <div class="titem">
-          <h4>Picked the right interface: Telegram</h4>
-          <p>Chose Telegram because it works on both our iPhones, has an excellent bot API, supports voice messages, and feels like a natural chat — not another productivity app.</p>
-        </div>
-        <div class="titem">
-          <h4>Claude Code wrote the entire bot</h4>
-          <p>Using Claude Code, the complete bot was built — Telegram integration, Claude AI calls, task management, conversation memory, group chat, and Google Calendar. No manual coding needed.</p>
-        </div>
-        <div class="titem">
-          <h4>Added voice, Notion, and smart digests</h4>
-          <p>Iterated quickly — added faster-whisper for voice transcription, Google Calendar for iPhone reminders, Notion as a live database, and a daily 7 AM digest with real-time stock market indices.</p>
-        </div>
-        <div class="titem">
-          <h4>Added security, observability, and auto-recovery</h4>
-          <p>Prompt injection firewall, secret scanner, real-time Telegram security alerts, Notion security log. Daily cost reports, eval reports, /status command. Retry logic, graceful shutdown with Notion sync.</p>
-        </div>
-        <div class="titem">
-          <h4>Long-term memory and image analysis</h4>
-          <p>Mira now remembers facts about the family across conversations — stored in a Notion Memory database, auto-extracted after each chat. Added Claude Vision so you can send any photo (receipt, document, shopping list) and Mira reads and acts on it.</p>
-        </div>
-        <div class="titem">
-          <h4>Status notifications and 24/7 cloud deployment</h4>
-          <p>Mira now sends Telegram alerts when she goes online (🟢), shuts down (🔴), or wakes from sleep (😴). Deployed to Railway cloud — runs 24/7 independent of the Mac, with voice support via faster-whisper in a Docker container.</p>
-        </div>
-        <div class="titem">
-          <h4>Cross-user notifications — Mira as the messenger</h4>
-          <p>When one person gives Mira an instruction with an action for the other (e.g. "remind Abhishek to buy chocolates"), Mira instantly sends a direct Telegram message to that person. No more relying on "I told Mira to tell you."</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Features -->
-  <div class="section">
-    <div class="label">What Mira Can Do</div>
-    <div class="feat-grid">
-      <div class="feat">
-        <div class="feat-icon">📋</div>
-        <h4>Shared Task Management</h4>
-        <p>Both of us can add, view, and complete tasks. Tracks who added what and syncs to Notion automatically.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">📅</div>
-        <h4>Google Calendar Events</h4>
-        <p>Say "remind me at 4:30am Sunday for my marathon" — it creates the event with alerts straight to your iPhone.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🎙️</div>
-        <h4>Voice Messages</h4>
-        <p>Send a voice note in Telegram. Whisper transcribes it, Claude understands it, and action is taken automatically.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🛒</div>
-        <h4>Smart Shopping List</h4>
-        <p>Say "add milk, eggs and bread" — items appear on the shared list and sync to Notion instantly.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">💡</div>
-        <h4>Ideas Capture</h4>
-        <p>Save blog ideas, AI product concepts, and more. Mira auto-tags each idea by type and stores it in Notion.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">📈</div>
-        <h4>Live Market Digest</h4>
-        <p>Every morning at 7 AM IST, get real-time prices and % change for S&P 500, NASDAQ, Nifty 50, Sensex, Gold, and Silver.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🗃️</div>
-        <h4>Notion Sync</h4>
-        <p>All tasks, shopping items, and ideas auto-sync to Notion databases in real time — accessible anywhere.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🔍</div>
-        <h4>MacBook File Search</h4>
-        <p>Ask Mira to find any file on your MacBook. It searches and returns the path directly in chat.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🧠</div>
-        <h4>Long-term Memory</h4>
-        <p>Remembers facts about the family across all conversations — allergies, goals, important dates. Auto-extracted after every chat and stored in a Notion Memory database.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🖼️</div>
-        <h4>Image & Photo Analysis</h4>
-        <p>Send any photo — a grocery receipt, a bill, a handwritten list, a document. Claude reads it and takes the right action automatically.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🔐</div>
-        <h4>Security Firewall</h4>
-        <p>Prompt injection detection, secret leak scanner, real-time Telegram security alerts, and a Notion security log for every access attempt.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">📡</div>
-        <h4>Observability & Reports</h4>
-        <p>Daily cost reports (tokens, $), eval reports (actions taken, errors), live /status checks — all synced to Notion automatically.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">⚙️</div>
-        <h4>Auto-Recovery</h4>
-        <p>Retries failed API calls with exponential backoff, syncs state to Notion on shutdown. Hosted on Railway for 24/7 uptime.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">⌨️</div>
-        <h4>Command Autocomplete</h4>
-        <p>Type / in Telegram to see all 18 commands with descriptions instantly — no need to remember syntax.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">👥</div>
-        <h4>Family Group Chat</h4>
-        <p>Works in a shared Telegram group. Doesn't interrupt every message — only responds when relevant.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🟢</div>
-        <h4>Status Notifications</h4>
-        <p>Mira sends a Telegram message when she comes online, shuts down, or wakes from Mac sleep — so you always know her state.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">☁️</div>
-        <h4>24/7 Cloud Hosting</h4>
-        <p>Deployed on Railway — runs always, independent of any Mac. Docker container with ffmpeg included for voice. ~$0–1/month.</p>
-      </div>
-      <div class="feat">
-        <div class="feat-icon">🔔</div>
-        <h4>Cross-User Notifications</h4>
-        <p>When Alekya says "remind Abhishek to buy chocolates", he gets an instant Telegram DM. Works both ways — frictionless coordination between partners.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Morning Digest -->
-  <div class="section">
-    <div class="label">Morning Digest — Every Day at 7 AM IST</div>
-    <div class="digest-box">
-      <div class="d-head">☀️ Good morning! Here's your daily briefing.</div>
-
-      <div class="d-section">✅ Pending Tasks</div>
-      • Book dentist appointment — Abhishek<br>
-      • Pay electricity bill — Alekya<br>
-
-      <div class="d-section">🛒 Shopping List</div>
-      • Milk &nbsp;• Eggs &nbsp;• Olive oil<br>
-
-      <div class="d-section">💡 Recent Ideas</div>
-      • [Blog Idea] AI tools for non-coders<br>
-      • [AI Product] Smart home assistant for Indian households<br>
-
-      <div class="d-section">📈 Markets</div>
-      <span class="green">🇺🇸 S&P 500: 7,022.95  ▲ +0.80%</span><br>
-      <span class="red">🇺🇸 Dow Jones: 48,463.72  ▼ -0.15%</span><br>
-      <span class="green">🇺🇸 NASDAQ: 24,016.02  ▲ +1.59%</span><br>
-      <span class="green">🇮🇳 Nifty 50: 24,231.30  ▲ +1.73%</span><br>
-      <span class="green">🇮🇳 Sensex: 78,111.24  ▲ +1.64%</span><br>
-      <span class="red">🥇 Gold: 4,810.70  ▼ -0.80%</span><br>
-      <span class="red">🥈 Silver: 79.07  ▼ -1.07%</span>
+      <p>Tasks lived in one app, shopping lists in another, calendar reminders getting missed, ideas scattered in notes — and no easy way to keep each other in the loop without constant back-and-forth. I wanted one assistant that both of us could talk to naturally and that actually <em>took action</em>, not another app to maintain.</p>
     </div>
   </div>
 
@@ -662,7 +529,7 @@
         <div class="msg right">
           <div>
             <div class="name-tag">Alekya</div>
-            <div class="bubble">🎙️ <em>Voice message: "Add milk, eggs, bread and olive oil to shopping"</em></div>
+            <div class="bubble">🎙️ <em>Voice note (3 sec): "add milk, eggs and olive oil to shopping"</em></div>
           </div>
           <div class="msg-ava">👩</div>
         </div>
@@ -671,23 +538,23 @@
           <div class="msg-ava">🤖</div>
           <div>
             <div class="name-tag">Mira</div>
-            <div class="bubble">📝 Heard: <em>"Add milk, eggs, bread and olive oil to shopping"</em><br><br>🛒 Added to shopping list + Notion!<br>• Milk &nbsp;• Eggs &nbsp;• Bread &nbsp;• Olive oil</div>
+            <div class="bubble">🎙️ Heard: <em>"add milk, eggs and olive oil to shopping"</em><br><br>🛒 Added to shopping list:<br>• Milk &nbsp;• Eggs &nbsp;• Olive oil</div>
           </div>
         </div>
 
         <div class="msg right">
           <div>
-            <div class="name-tag">Abhishek</div>
-            <div class="bubble">I have an idea — an AI tool that helps non-coders build their own personal tools</div>
+            <div class="name-tag">Alekya</div>
+            <div class="bubble">Remind Abhishek to pick up chocolates on his way home</div>
           </div>
-          <div class="msg-ava">👨</div>
+          <div class="msg-ava">👩</div>
         </div>
 
         <div class="msg left">
           <div class="msg-ava">🤖</div>
           <div>
-            <div class="name-tag">Mira</div>
-            <div class="bubble">💡 Saved to your Ideas database in Notion!<br><br><strong>[AI Product]</strong> AI tool that helps non-coders build personal tools<br><br>Great idea — want me to add any notes to it?</div>
+            <div class="name-tag">Mira → Abhishek (private DM, instantly)</div>
+            <div class="bubble notify">🔔 Hey Abhishek! Alekya wants you to: pick up chocolates on your way home 🍫</div>
           </div>
         </div>
 
@@ -703,27 +570,182 @@
           <div class="msg-ava">🤖</div>
           <div>
             <div class="name-tag">Mira</div>
-            <div class="bubble">📄 I can see your electricity bill — ₹2,340 due by 25th April.<br><br>✅ Added task: <em>Pay electricity bill ₹2,340 before 25th April</em><br><br>Want me to set a reminder a few days before?</div>
-          </div>
-        </div>
-
-        <div class="msg right">
-          <div>
-            <div class="name-tag">Alekya</div>
-            <div class="bubble">Remind Abhishek to pick up chocolates on his way home</div>
-          </div>
-          <div class="msg-ava">👩</div>
-        </div>
-
-        <div class="msg left">
-          <div class="msg-ava">🤖</div>
-          <div>
-            <div class="name-tag">Mira → Abhishek (private DM)</div>
-            <div class="bubble">🔔 Hey Abhishek! Alekya wants you to: pick up chocolates on your way home 🍫</div>
+            <div class="bubble">📄 Electricity bill — ₹2,340 due by 25th April.<br><br>✅ Added task: <em>Pay electricity bill ₹2,340 before 25th April</em></div>
           </div>
         </div>
 
       </div>
+    </div>
+  </div>
+
+  <!-- How built -->
+  <div class="section">
+    <div class="label">How It Was Built</div>
+    <div class="card">
+      <div class="timeline">
+        <div class="titem">
+          <h4>Started with a conversation, not a spec</h4>
+          <p>No wireframes or planning docs. Just described what I wanted to Claude Code: "I want an AI assistant for me and my wife that handles tasks, scheduling, shopping, and household management via Telegram."</p>
+        </div>
+        <div class="titem">
+          <h4>Picked the right interface: Telegram</h4>
+          <p>Works on both our iPhones, has an excellent bot API, supports voice messages and photos, and feels like a natural chat — not another productivity app to log into.</p>
+        </div>
+        <div class="titem">
+          <h4>Claude Code wrote the entire codebase</h4>
+          <p>The complete bot — Telegram integration, Claude AI calls, task management, conversation memory, group chat logic, and Google Calendar — was built without me writing a single line of Python manually.</p>
+        </div>
+        <div class="titem">
+          <h4>Added voice, Notion sync, and smart digests</h4>
+          <p>Iterated quickly: faster-whisper for voice transcription in the cloud container, Notion as a live database for tasks/shopping/ideas, and a daily 7 AM digest with real-time stock market data.</p>
+        </div>
+        <div class="titem">
+          <h4>Security, observability, and auto-recovery</h4>
+          <p>Prompt injection firewall, secret scanner, real-time security alerts. Daily cost and eval reports. Retry logic with exponential backoff, graceful shutdown with Notion sync.</p>
+        </div>
+        <div class="titem">
+          <h4>Long-term memory and image analysis</h4>
+          <p>Mira now remembers facts about the family across conversations — stored in Notion, auto-extracted after each chat. Claude Vision lets you send any photo (receipt, bill, handwritten list) and Mira reads and acts on it.</p>
+        </div>
+        <div class="titem">
+          <h4>Cross-user notifications — Mira as the messenger</h4>
+          <p>When Alekya tells Mira to remind Abhishek of something, he gets an instant Telegram DM — and vice versa. Mira bridges the gap so neither of us needs to forward messages to each other.</p>
+        </div>
+        <div class="titem">
+          <h4>Deployed to Railway for 24/7 cloud uptime</h4>
+          <p>Runs always, independent of any Mac. Docker container with ffmpeg included for voice. Sends a 🟢 online notification on every boot and 🔴 on shutdown.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="section">
+    <div class="label">What Mira Can Do</div>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="feat-icon">📋</div>
+        <h4>Shared Task Management</h4>
+        <p>Both of us can add, view, and complete tasks. Tracks who added what and syncs to Notion automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📅</div>
+        <h4>Google Calendar Events</h4>
+        <p>Say "remind me at 4:30am Sunday for my marathon" — it creates the event with alerts straight to your iPhone.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🎙️</div>
+        <h4>Voice Messages</h4>
+        <p>Send a voice note in Telegram. Whisper transcribes it, Claude understands it, and action is taken automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🛒</div>
+        <h4>Smart Shopping List</h4>
+        <p>Say "add milk, eggs and bread" — items appear on the shared list and sync to Notion instantly.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🔔</div>
+        <h4>Cross-User Notifications</h4>
+        <p>When Alekya tells Mira to remind Abhishek of something, he gets an instant DM — and vice versa. No more "I told Mira to tell you."</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">💡</div>
+        <h4>Ideas Capture</h4>
+        <p>Save blog ideas, AI product concepts, and more. Mira auto-tags each idea by type and stores it in Notion.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📈</div>
+        <h4>Live Market Digest</h4>
+        <p>Every morning at 7 AM IST, get real-time prices and % change for S&P 500, NASDAQ, Nifty 50, Sensex, Gold, and Silver.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🗃️</div>
+        <h4>Notion Sync</h4>
+        <p>All tasks, shopping items, and ideas auto-sync to Notion databases in real time — accessible anywhere.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🧠</div>
+        <h4>Long-term Memory</h4>
+        <p>Remembers facts about the family across all conversations — allergies, goals, important dates. Auto-extracted and stored in Notion after every chat.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🖼️</div>
+        <h4>Image & Photo Analysis</h4>
+        <p>Send any photo — a grocery receipt, a bill, a handwritten list, a document. Claude reads it and takes the right action automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🔍</div>
+        <h4>MacBook File Search</h4>
+        <p>Ask Mira to find any file on your MacBook. It searches and sends the file directly in chat.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🔐</div>
+        <h4>Security Firewall</h4>
+        <p>Prompt injection detection, secret leak scanner, real-time Telegram security alerts, and a Notion security log for every suspicious event.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📡</div>
+        <h4>Observability & Reports</h4>
+        <p>Daily cost reports (tokens, $), eval reports (actions taken, errors), live /status checks — all synced to Notion automatically.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">⚙️</div>
+        <h4>Auto-Recovery</h4>
+        <p>Retries failed API calls with exponential backoff, syncs state to Notion on shutdown. Hosted on Railway for 24/7 uptime.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">👥</div>
+        <h4>Family Group Chat</h4>
+        <p>Works in a shared Telegram group. Doesn't respond to every message — only when relevant or directly mentioned.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">🟢</div>
+        <h4>Status Notifications</h4>
+        <p>Mira sends a Telegram message when she comes online or shuts down — so you always know her state.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">☁️</div>
+        <h4>24/7 Cloud Hosting</h4>
+        <p>Deployed on Railway — runs always, independent of any Mac. Docker container with ffmpeg for voice. ~$0–1/month.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">⌨️</div>
+        <h4>Command Autocomplete</h4>
+        <p>Type / in Telegram to see all commands with descriptions instantly — no syntax to memorise.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📰</div>
+        <h4>Morning Digest</h4>
+        <p>7 AM IST daily briefing: pending tasks, shopping list, recent ideas, and live global market data — all in one message.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Morning Digest -->
+  <div class="section">
+    <div class="label">Morning Digest — Every Day at 7 AM IST</div>
+    <div class="digest-box">
+      <div class="d-head">☀️ Good morning! Here's your daily briefing.</div>
+
+      <div class="d-section">✅ Pending Tasks</div>
+      • Book dentist appointment — Abhishek<br>
+      • Pay electricity bill — Alekya<br>
+
+      <div class="d-section">🛒 Shopping List</div>
+      • Milk &nbsp;• Eggs &nbsp;• Olive oil<br>
+
+      <div class="d-section">💡 Recent Ideas</div>
+      • [Blog Idea] AI tools for non-coders<br>
+      • [AI Product] Smart home assistant for Indian households<br>
+
+      <div class="d-section">📈 Markets</div>
+      <span class="green">🇺🇸 S&P 500: 7,022.95  ▲ +0.80%</span><br>
+      <span class="red">🇺🇸 Dow Jones: 48,463.72  ▼ -0.15%</span><br>
+      <span class="green">🇺🇸 NASDAQ: 24,016.02  ▲ +1.59%</span><br>
+      <span class="green">🇮🇳 Nifty 50: 24,231.30  ▲ +1.73%</span><br>
+      <span class="green">🇮🇳 Sensex: 78,111.24  ▲ +1.64%</span><br>
+      <span class="red">🥇 Gold: 4,810.70  ▼ -0.80%</span><br>
+      <span class="red">🥈 Silver: 79.07  ▼ -1.07%</span>
     </div>
   </div>
 
@@ -740,16 +762,17 @@
         <div class="arch-arrow">→</div>
         <div class="arch-box">🤖 Claude AI</div>
       </div>
-      <div class="arch-row" style="padding-left: 180px;">
-        <div class="arch-arrow">↓</div>
+      <div class="arch-row">
+        <div class="arch-arrow" style="padding-left: 8px;">↓</div>
       </div>
-      <div class="arch-row" style="padding-left: 20px; gap: 10px; flex-wrap: wrap;">
+      <div class="arch-row" style="gap: 10px; flex-wrap: wrap;">
         <div class="arch-box">📅 Google Calendar</div>
         <div class="arch-box">🗃️ Notion</div>
         <div class="arch-box">📋 Tasks</div>
         <div class="arch-box">🛒 Shopping</div>
         <div class="arch-box">🧠 Memory</div>
         <div class="arch-box">📈 yfinance</div>
+        <div class="arch-box">🔔 Cross-notify</div>
         <div class="arch-box">🔐 Security Log</div>
       </div>
     </div>
@@ -789,7 +812,7 @@
       <div class="cost-card">
         <div class="cost-service">Claude API</div>
         <div class="cost-price">~$3</div>
-        <div class="cost-period">per month (light use)</div>
+        <div class="cost-period">per month (light family use)</div>
       </div>
       <div class="cost-card">
         <div class="cost-service">Google Calendar + faster-whisper</div>
@@ -801,6 +824,17 @@
         <div class="cost-price">~$0–1</div>
         <div class="cost-period">within free $5/month credit</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Limitations -->
+  <div class="section">
+    <div class="label">Honest Limitations</div>
+    <div class="limit-grid">
+      <div class="limit-item"><strong>Voice is English-only</strong>The faster-whisper base model works best with clear English. Accuracy drops with accents or mixed-language speech.</div>
+      <div class="limit-item"><strong>File search needs local Mac</strong>The /find command only works when the bot is running locally on a Mac — not on Railway.</div>
+      <div class="limit-item"><strong>Google Calendar setup requires a Mac</strong>The one-time OAuth flow needs a browser. After that, it works fine on Railway.</div>
+      <div class="limit-item"><strong>No real-time two-way calendar sync</strong>Mira creates events, but doesn't read back calendar changes made directly in Google Calendar (yet).</div>
     </div>
   </div>
 
@@ -818,21 +852,30 @@
       <div class="road-item"><div class="road-icon">⌨️</div><div class="road-text">Telegram command autocomplete</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🔐</div><div class="road-text">Security: prompt injection firewall, secret scanner, Telegram alerts, Notion log</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">📡</div><div class="road-text">Observability: /status, /eval, /costreport with Notion sync</div><div class="road-status done-tag">Shipped</div></div>
-      <div class="road-item"><div class="road-icon">⚙️</div><div class="road-text">Auto-recovery: launchd, retry logic, graceful shutdown</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">⚙️</div><div class="road-text">Auto-recovery: retry logic, graceful shutdown</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🧠</div><div class="road-text">Long-term memory — Notion-backed, auto-extracted after every chat</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🖼️</div><div class="road-text">Image & photo analysis via Claude Vision</div><div class="road-status done-tag">Shipped</div></div>
-      <div class="road-item"><div class="road-icon">🟢</div><div class="road-text">Status notifications — online, offline, woke from sleep</div><div class="road-status done-tag">Shipped</div></div>
+      <div class="road-item"><div class="road-icon">🟢</div><div class="road-text">Status notifications — online and offline alerts</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">☁️</div><div class="road-text">Deploy to Railway for 24/7 cloud hosting</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">🔔</div><div class="road-text">Cross-user notifications — instant Telegram ping when one partner assigns an action to the other</div><div class="road-status done-tag">Shipped</div></div>
       <div class="road-item"><div class="road-icon">📧</div><div class="road-text">Gmail integration — summarise and draft emails</div><div class="road-status next-tag">Planned</div></div>
       <div class="road-item"><div class="road-icon">💰</div><div class="road-text">Finance & budget tracking</div><div class="road-status next-tag">Planned</div></div>
+      <div class="road-item"><div class="road-icon">📆</div><div class="road-text">Wife's Google Calendar — two-way sync</div><div class="road-status next-tag">Planned</div></div>
     </div>
   </div>
 
   <!-- CTA -->
   <div class="cta">
-    <h3>Open Source on GitHub</h3>
-    <p>The full code is available. Clone it, customise it, and build your own Mira.<br>All you need is a Telegram account, an Anthropic API key, and an evening.</p>
+    <h3>Open Source — Build Your Own</h3>
+    <p>The full code is on GitHub. Here's exactly what you need to get started:</p>
+    <div class="cta-requirements">
+      <div class="cta-req">Telegram account<span>free, takes 2 min</span></div>
+      <div class="cta-req">Anthropic API key<span>$5 gets you months of use</span></div>
+      <div class="cta-req">Google account<span>for Calendar integration</span></div>
+      <div class="cta-req">Notion account<span>free tier is enough</span></div>
+      <div class="cta-req">Railway account<span>free $5/month credit</span></div>
+    </div>
+    <p style="margin-bottom: 24px; font-size: 14px; color: #6b7280;">Time to get a working bot: one evening. Voice support and cloud deployment included.</p>
     <a class="cta-link" href="https://github.com/abhishekk030194/chief-of-staff" target="_blank">View on GitHub →</a>
   </div>
 
