@@ -1924,11 +1924,23 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.info(f"[NOTIFY_OTHER] other_id={other_id} | message: {notify_match.group(1).strip()[:100]}")
         if other_id:
             notify_text = notify_match.group(1).strip()
+            sent = False
+            # Try private chat first (works only if they've messaged the bot directly before)
             try:
                 await context.bot.send_message(chat_id=other_id, text=notify_text)
-                logging.info(f"[NOTIFY_OTHER] sent to {other_id} successfully")
+                logging.info(f"[NOTIFY_OTHER] sent privately to {other_id} successfully")
+                sent = True
             except Exception as e:
-                logging.error(f"[NOTIFY_OTHER] send error: {e}")
+                logging.warning(f"[NOTIFY_OTHER] private DM failed ({e}), falling back to group chats")
+            # Fallback: send to all group chats so the other person sees it there
+            if not sent:
+                group_chat_ids = [cid for cid in load_chat_ids() if cid < 0]
+                for gid in group_chat_ids:
+                    try:
+                        await context.bot.send_message(chat_id=gid, text=notify_text)
+                        logging.info(f"[NOTIFY_OTHER] sent to group {gid} successfully")
+                    except Exception as ge:
+                        logging.error(f"[NOTIFY_OTHER] group send error {gid}: {ge}")
 
     clean_reply = re.sub(r"<idea>.*?</idea>", "", reply, flags=re.DOTALL)
     clean_reply = re.sub(r"<shopping>.*?</shopping>", "", clean_reply, flags=re.DOTALL)
