@@ -362,6 +362,16 @@ def create_calendar_event(title, start_dt, end_dt=None, description=""):
     created = service.events().insert(calendarId="primary", body=event).execute()
     return created.get("htmlLink")
 
+def get_events_in_range(from_date: str, to_date: str, max_results=20):
+    service = get_calendar_service()
+    time_min = datetime.strptime(from_date, "%Y-%m-%d").isoformat() + "Z"
+    time_max = (datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)).isoformat() + "Z"
+    result = service.events().list(
+        calendarId="primary", timeMin=time_min, timeMax=time_max,
+        maxResults=max_results, singleEvents=True, orderBy="startTime"
+    ).execute()
+    return result.get("items", [])
+
 def get_upcoming_events(max_results=5):
     service = get_calendar_service()
     now = datetime.utcnow().isoformat() + "Z"
@@ -1004,6 +1014,12 @@ If the user's message contains a date, time, or scheduling intent (e.g. "tomorro
 </calendar>
 
 Only include the <calendar> block when you are confident there is a specific event to create. Do not include it for vague reminders without a date/time.
+
+IMPORTANT — Calendar date search:
+If the user asks what's on their calendar for a specific date or range (e.g. "what's on Friday?", "anything this weekend?", "what do I have on April 25?", "show me next week"), respond with:
+<calendarsearch>{{"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"}}</calendarsearch>
+
+Use the same date for both fields for a single day. Always resolve relative dates (today, tomorrow, Friday, next week) to actual YYYY-MM-DD dates based on the current date.
 
 IMPORTANT — Shopping list detection:
 If the user wants to add items to the shopping list (e.g. "add milk to shopping", "we need eggs and bread", "buy tomatoes"), respond with a JSON block at the END of your reply:
@@ -1649,7 +1665,7 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     shopping_text = "\n".join([f"- {i['name']}" for i in pending_shopping]) if pending_shopping else "Empty."
 
     try:
-        events = get_upcoming_events(3)
+        events = get_upcoming_events(10)
         event_text = "\n".join(
             [f"- {e.get('summary','?')} on {e['start'].get('dateTime', e['start'].get('date','?'))[:16]}"
              for e in events]
@@ -1952,7 +1968,8 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
     clean_reply = re.sub(r"<markalldone\s*/?>", "", clean_reply)
     clean_reply = re.sub(r"<markallbought\s*/?>", "", clean_reply)
     clean_reply = re.sub(r"<remember>.*?</remember>", "", clean_reply, flags=re.DOTALL)
-    clean_reply = re.sub(r"<notify_other>.*?</notify_other>", "", clean_reply, flags=re.DOTALL).strip()
+    clean_reply = re.sub(r"<notify_other>.*?</notify_other>", "", clean_reply, flags=re.DOTALL)
+    clean_reply = re.sub(r"<calendarsearch>.*?</calendarsearch>", "", clean_reply, flags=re.DOTALL).strip()
 
     if calendar_match:
         try:
@@ -1970,6 +1987,30 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
             logging.error(f"Calendar error: {e}")
             increment_stat("errors")
             clean_reply += "\n\n⚠️ Couldn't create the calendar event. Try /calendar to check."
+
+    # Handle calendar date range search
+    calendarsearch_match = re.search(r"<calendarsearch>(.*?)</calendarsearch>", reply, re.DOTALL)
+    if calendarsearch_match:
+        try:
+            data = json.loads(calendarsearch_match.group(1).strip())
+            from_date = data.get("from", datetime.now().strftime("%Y-%m-%d"))
+            to_date = data.get("to", from_date)
+            events = get_events_in_range(from_date, to_date)
+            if events:
+                lines = []
+                for e in events:
+                    start = e["start"].get("dateTime", e["start"].get("date", ""))
+                    if "T" in start:
+                        dt = datetime.fromisoformat(start[:19])
+                        start_str = dt.strftime("%a %b %d at %I:%M %p")
+                    else:
+                        start_str = datetime.strptime(start, "%Y-%m-%d").strftime("%a %b %d")
+                    lines.append(f"• *{e.get('summary', 'No title')}* — {start_str}")
+                clean_reply += "\n\n📅 *Events found:*\n" + "\n".join(lines)
+            else:
+                clean_reply += f"\n\n📅 Nothing on the calendar from {from_date} to {to_date}."
+        except Exception as e:
+            logging.error(f"Calendar search error: {e}")
 
     # Auto-save tasks mentioned in message (skip if it's a shopping message)
     shopping_keywords = ["buy", "shopping", "groceries", "grocery", "supermarket", "get some", "pick up"]
